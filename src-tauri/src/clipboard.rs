@@ -242,12 +242,33 @@ fn send_copy_keystroke() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
 fn send_paste_keystroke() -> Result<(), String> {
     let mut enigo = Enigo::new(&EnigoSettings::default())
         .map_err(|err| format!("Input automation unavailable: {err}"))?;
     enigo.key(Key::Shift, Direction::Press).map_err(|err| err.to_string())?;
     enigo.key(Key::Insert, Direction::Click).map_err(|err| err.to_string())?;
     enigo.key(Key::Shift, Direction::Release).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn send_paste_keystroke() -> Result<(), String> {
+    let mut enigo = Enigo::new(&EnigoSettings::default())
+        .map_err(|err| format!("Input automation unavailable: {err}"))?;
+    enigo.key(Key::Meta, Direction::Press).map_err(|err| err.to_string())?;
+    enigo.key(Key::Unicode('v'), Direction::Click).map_err(|err| err.to_string())?;
+    enigo.key(Key::Meta, Direction::Release).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn send_paste_keystroke() -> Result<(), String> {
+    let mut enigo = Enigo::new(&EnigoSettings::default())
+        .map_err(|err| format!("Input automation unavailable: {err}"))?;
+    enigo.key(Key::Control, Direction::Press).map_err(|err| err.to_string())?;
+    enigo.key(Key::Unicode('v'), Direction::Click).map_err(|err| err.to_string())?;
+    enigo.key(Key::Control, Direction::Release).map_err(|err| err.to_string())?;
     Ok(())
 }
 

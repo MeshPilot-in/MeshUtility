@@ -364,13 +364,15 @@ pub async fn start_recording(
         let model_for_streaming = state.selected_model.lock().unwrap().clone();
         let mut bundled_bin: Option<std::path::PathBuf> = None;
         if let Ok(res_dir) = _app.path().resource_dir() {
-            let p = res_dir.join("bin").join("whisper").join("whisper-cli.exe");
+            let bin_name = if cfg!(target_os = "windows") { "whisper-cli.exe" } else { "whisper-cli" };
+            let p = res_dir.join("bin").join("whisper").join(bin_name);
             if p.exists() { bundled_bin = Some(p); }
         }
         if bundled_bin.is_none() {
             if let Ok(exe) = std::env::current_exe() {
                 if let Some(dir) = exe.parent() {
-                    let p = dir.join("..").join("..").join("bin").join("whisper").join("whisper-cli.exe");
+                    let bin_name = if cfg!(target_os = "windows") { "whisper-cli.exe" } else { "whisper-cli" };
+                    let p = dir.join("..").join("..").join("bin").join("whisper").join(bin_name);
                     if p.exists() { bundled_bin = Some(p); }
                 }
             }
@@ -569,7 +571,8 @@ async fn transcribe(
         
         let mut bundled = None;
         if let Ok(res_dir) = app_handle.path().resource_dir() {
-            let path = res_dir.join("bin").join("whisper").join("whisper-cli.exe");
+            let bin_name = if cfg!(target_os = "windows") { "whisper-cli.exe" } else { "whisper-cli" };
+            let path = res_dir.join("bin").join("whisper").join(bin_name);
             if path.exists() { bundled = Some(path); }
         }
 
@@ -577,7 +580,8 @@ async fn transcribe(
         if bundled.is_none() {
             if let Ok(exe) = std::env::current_exe() {
                 if let Some(dir) = exe.parent() {
-                    let path_dev = dir.join("..").join("..").join("bin").join("whisper").join("whisper-cli.exe");
+                    let bin_name = if cfg!(target_os = "windows") { "whisper-cli.exe" } else { "whisper-cli" };
+                    let path_dev = dir.join("..").join("..").join("bin").join("whisper").join(bin_name);
                     if path_dev.exists() { bundled = Some(path_dev); }
                 }
             }
@@ -671,7 +675,8 @@ async fn transcribe_parakeet(model_dir: &std::path::Path, wav: &std::path::Path,
         .map_err(|e| format!("Cannot locate resource dir: {}", e))?
         .join("bin")
         .join("sherpa");
-    let runtime = sherpa_dir.join("sherpa-onnx-offline.exe");
+    let bin_name = if cfg!(target_os = "windows") { "sherpa-onnx-offline.exe" } else { "sherpa-onnx-offline" };
+    let runtime = sherpa_dir.join(bin_name);
     if !runtime.exists() {
         return Err(format!(
             "Parakeet runtime not found at {}. Reinstall MeshVoice.",

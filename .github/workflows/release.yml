@@ -1,0 +1,74 @@
+name: Release V1
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: ''
+          - platform: 'macos-latest'
+            args: ''
+          - platform: 'ubuntu-22.04'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev pkg-config
+
+      - name: Build native whisper-cli (macOS & Linux)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
+          cd whisper.cpp
+          make whisper-cli
+          mkdir -p ../src-tauri/bin/whisper
+          cp whisper-cli ../src-tauri/bin/whisper/
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build frontend & Tauri app
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'MeshUtility V${{ github.ref_name }}'
+          releaseBody: 'MeshUtility V1 standalone cross-platform release. stand-alone Tray-resident utility for AI voice dictation and prompt rewriting.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
