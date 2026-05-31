@@ -70,6 +70,6 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'MeshUtility V${{ github.ref_name }}'
           releaseBody: 'MeshUtility V1 standalone cross-platform release. stand-alone Tray-resident utility for AI voice dictation and prompt rewriting.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
