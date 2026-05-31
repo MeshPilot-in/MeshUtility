@@ -1111,14 +1111,14 @@ async fn install_update(_app: AppHandle, download_url: String) -> Result<(), Str
 
 fn main() {
     tauri::Builder::default()
-        .manage(RuntimeState::default())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.set_focus();
             }
         }))
+        .manage(RuntimeState::default())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
@@ -1287,9 +1287,8 @@ fn main() {
                     &separator_2,
                     &quit
                 ])?;
-                TrayIconBuilder::new()
+                let mut tray_builder = TrayIconBuilder::new()
                     .menu(&menu)
-                    .icon(app.default_window_icon().unwrap().clone())
                     .tooltip("MeshUtility Suite - running in tray")
                     .show_menu_on_left_click(false)
                     .on_tray_icon_event(|tray, event| {
@@ -1319,8 +1318,11 @@ fn main() {
                         }
                         "quit" => app.exit(0),
                         _ => {}
-                    })
-                    .build(app)?;
+                    });
+                if let Some(icon) = app.default_window_icon() {
+                    tray_builder = tray_builder.icon(icon.clone());
+                }
+                tray_builder.build(app)?;
             }
 
             show_startup_windows(app.handle(), autostart);
