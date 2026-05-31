@@ -46,9 +46,10 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
           cd whisper.cpp
-          make whisper-cli
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
           mkdir -p ../src-tauri/bin/whisper
-          cp whisper-cli ../src-tauri/bin/whisper/
+          cp build/bin/whisper-cli ../src-tauri/bin/whisper/
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable

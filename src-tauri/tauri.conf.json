@@ -73,10 +73,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "bin/whisper/*",
-      "bin/sherpa/*"
-    ],
     "publisher": "MeshPilot",
     "copyright": "Copyright © 2026 MeshPilot"
   },

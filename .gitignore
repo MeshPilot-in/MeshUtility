@@ -38,5 +38,7 @@ src-tauri/whisper.zip
 src-tauri/whisper-extracted/
 
 # Tauri bundled binaries (downloaded at build time)
-src-tauri/bin/whisper/
-src-tauri/bin/sherpa/
+!src-tauri/bin/whisper/*.exe
+!src-tauri/bin/whisper/*.dll
+!src-tauri/bin/sherpa/*.exe
+!src-tauri/bin/sherpa/*.dll

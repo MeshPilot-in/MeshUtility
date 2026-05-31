@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": [
+      "bin/whisper/*",
+      "bin/sherpa/*"
+    ]
+  }
+}
