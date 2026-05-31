@@ -3,6 +3,11 @@
     "resources": [
       "bin/whisper/*",
       "bin/sherpa/*"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   }
 }
