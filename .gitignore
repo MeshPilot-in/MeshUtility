@@ -42,3 +42,11 @@ src-tauri/whisper-extracted/
 !src-tauri/bin/whisper/*.dll
 !src-tauri/bin/sherpa/*.exe
 !src-tauri/bin/sherpa/*.dll
+
+# MeshSwarm MCP configs (contain API key)
+opencode.json
+.mcp.json
+.gemini/settings.json
+.cursor/mcp.json
+.agents/mcp_config.json
+meshmcp.local.ps1
