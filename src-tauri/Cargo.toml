@@ -3,6 +3,7 @@ name = "meshvoice"
 version = "0.2.3"
 description = "A native dictation app"
 authors = ["MeshPilot"]
+license = "Apache-2.0"
 edition = "2021"
 
 [build-dependencies]

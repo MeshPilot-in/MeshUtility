@@ -10,7 +10,7 @@ Built with Tauri 2, React, and Rust. Works fully offline with local Whisper mode
 
 <br/>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg?style=flat-square&labelColor=111&color=F26A4B)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-orange.svg?style=flat-square&labelColor=111&color=F26A4B)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-orange?style=flat-square&labelColor=111&color=F26A4B)](https://tauri.app)
 [![Version](https://img.shields.io/badge/Version-v1.0.1-orange?style=flat-square&labelColor=111&color=F26A4B)](https://github.com/Jenesh11/MeshUtility/releases)
 [![Platform](https://img.shields.io/badge/Platform-Windows-orange?style=flat-square&labelColor=111&color=F26A4B)](https://github.com/Jenesh11/MeshUtility/releases)
@@ -233,7 +233,14 @@ Please match the existing code style. TypeScript uses React with Zustand for sta
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for full terms.
+Licensed under the **Apache License, Version 2.0** — see [LICENSE](LICENSE) for the
+full terms and [NOTICE](NOTICE) for attribution. You may use, modify, and
+distribute this software, including for commercial purposes, provided you comply
+with the License (retain notices, state changes, and include the NOTICE content).
+
+This project bundles and depends on third-party software under separate but
+compatible licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for
+details and required attributions (notably whisper.cpp and sherpa-onnx).
 
 ---
 
