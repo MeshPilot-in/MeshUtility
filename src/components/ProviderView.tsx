@@ -192,7 +192,7 @@ export function ProviderView(props: {
           }}
         >
           {meshPromptProviders.map((item) => (
-            <option key={item.id} value={item.id} style={{ background: '#1c1c1c', color: 'var(--text-primary)' }}>
+              <option key={item.id} value={item.id} style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}>
               {item.label} ({item.authMode === "api-key" ? "BYOK / Bring your own key" : "Local provider"})
             </option>
           ))}
@@ -231,7 +231,7 @@ export function ProviderView(props: {
             }}
           >
             {provider.models.map((model) => (
-              <option key={model.id} value={model.id} style={{ background: '#1c1c1c', color: 'var(--text-primary)' }}>
+              <option key={model.id} value={model.id} style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}>
                 {model.label} ({model.id})
               </option>
             ))}

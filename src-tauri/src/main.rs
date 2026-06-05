@@ -1112,13 +1112,20 @@ async fn install_update(_app: AppHandle, download_url: String) -> Result<(), Str
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 fn main() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
-        }))
+    let builder = tauri::Builder::default();
+
+    // Only enforce a single instance in release builds. In debug (`tauri dev`)
+    // we skip the lock so the dev build can run alongside the installed
+    // release build, which shares the same app identifier.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }));
+
+    builder
         .manage(RuntimeState::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())

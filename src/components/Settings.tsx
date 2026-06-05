@@ -62,7 +62,7 @@ function HotkeyRecorder({ value, onChange }: { value: string; onChange: (v: stri
       <div ref={ref} tabIndex={0}
         onFocus={() => setCapturing(true)} onBlur={() => setCapturing(false)}
         onKeyDown={capturing ? handleKeyDown : undefined}
-        style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', cursor:'pointer', outline:'none', background: capturing ? 'rgba(242,106,75,0.05)' : 'var(--surface)', border:`1px solid ${capturing ? '#F26A4B' : 'var(--border)'}`, borderRadius:10, transition:'all 0.15s' }}>
+        style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', cursor:'pointer', outline:'none', background: capturing ? 'color-mix(in oklab, var(--primary) 8%, var(--surface))' : 'var(--surface)', border:`1px solid ${capturing ? 'var(--primary)' : 'var(--border)'}`, borderRadius:10, transition:'all 0.15s' }}>
         <div style={{ display:'flex', gap:6 }}>
           {keys.map((k,i) => (
             <span key={i} style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:5, padding:'3px 9px', fontSize:12, fontFamily:"'JetBrains Mono',monospace", color:'var(--text)' }}>{k}</span>
@@ -79,7 +79,7 @@ function HotkeyRecorder({ value, onChange }: { value: string; onChange: (v: stri
 // ─── BarMeter ───────────────────────────────────────────────────────────────
 const BarMeter = ({ value, active }: { value: number; active: boolean }) => (
   <div style={{ width:64, height:3, background:'var(--border)', borderRadius:2, overflow:'hidden' }}>
-    <div style={{ width:`${value}%`, height:'100%', background: active ? '#F26A4B' : 'var(--text-muted)', borderRadius:2 }} />
+    <div style={{ width:`${value}%`, height:'100%', background: active ? 'var(--primary)' : 'var(--text-muted)', borderRadius:2 }} />
   </div>
 )
 
@@ -92,23 +92,23 @@ function ModelCard({ model, selected, downloaded, dlProgress, downloading, onDow
   return (
     <div onClick={selectable ? onSelect : undefined} style={{
       padding:'14px 16px', borderRadius:10, position:'relative', overflow:'hidden',
-      border:`1.5px solid ${selected && downloaded ? 'var(--accent)' : 'var(--border)'}`,
-      background: selected && downloaded ? 'rgba(var(--accent-rgb), 0.12)' : 'var(--surface)',
-      boxShadow: selected && downloaded ? '0 0 12px rgba(var(--accent-rgb), 0.15)' : 'none',
+      border:`1.5px solid ${selected && downloaded ? 'var(--primary)' : 'var(--border)'}`,
+      background: selected && downloaded ? 'color-mix(in oklab, var(--primary) 12%, var(--surface))' : 'var(--surface)',
+      boxShadow: selected && downloaded ? '0 0 0 1px var(--primary)' : 'none',
       cursor: selectable ? 'pointer' : 'default', transition:'all 0.15s',
     }}>
       {/* Download progress bar */}
       {downloading && dlProgress && (
-        <div style={{ position:'absolute', left:0, bottom:0, height:2, width:`${dlProgress.progress}%`, background:'var(--accent)', transition:'width 0.2s ease' }} />
+        <div style={{ position:'absolute', left:0, bottom:0, height:2, width:`${dlProgress.progress}%`, background:'var(--primary)', transition:'width 0.2s ease' }} />
       )}
       <div style={{ display:'flex', gap:12 }}>
-        <div style={{ width:8, height:8, borderRadius:'50%', background: selected && downloaded ? 'var(--accent)' : 'var(--border)', flexShrink:0, marginTop:4, transition:'background 0.15s' }} />
+        <div style={{ width:8, height:8, borderRadius:'50%', background: selected && downloaded ? 'var(--primary)' : 'var(--border)', flexShrink:0, marginTop:4, transition:'background 0.15s' }} />
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
             <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{model.name}</span>
-            {model.recommended && <span style={{ fontSize:10, background:'rgba(242,106,75,0.15)', color:'#F26A4B', padding:'1px 7px', borderRadius:4 }}>Recommended</span>}
+            {model.recommended && <span style={{ fontSize:10, background:'color-mix(in oklab, var(--primary) 16%, var(--surface))', color:'var(--primary)', padding:'1px 7px', borderRadius:4 }}>Recommended</span>}
             {(model.id === 'hinglish-turbo' || model.id === 'hinglish-small' || model.id === 'hinglish-apex') && (
-              <span style={{ fontSize:10, background:'rgba(242,106,75,0.12)', color:'#F26A4B', padding:'1px 7px', borderRadius:4 }}>Hinglish</span>
+              <span style={{ fontSize:10, background:'color-mix(in oklab, var(--primary) 14%, var(--surface))', color:'var(--primary)', padding:'1px 7px', borderRadius:4 }}>Hinglish</span>
             )}
             {loading && selected && <span style={{ fontSize:10, color:'var(--text-muted)' }}>Loading…</span>}
           </div>
@@ -118,7 +118,7 @@ function ModelCard({ model, selected, downloaded, dlProgress, downloading, onDow
             <span style={{ fontSize:10, color:'var(--text-muted)', background:'var(--surface-2)', padding:'2px 7px', borderRadius:4 }}>{model.runtime}</span>
             {model.can_translate && <span style={{ fontSize:10, color:'var(--text-muted)', background:'var(--surface-2)', padding:'2px 7px', borderRadius:4 }}>Translate to EN</span>}
             {(model.id === 'hinglish-turbo' || model.id === 'hinglish-small' || model.id === 'hinglish-apex') && (
-              <span style={{ fontSize:10, color:'#F26A4B', background:'rgba(242,106,75,0.08)', padding:'2px 7px', borderRadius:4 }}>Streaming</span>
+              <span style={{ fontSize:10, color:'var(--primary)', background:'color-mix(in oklab, var(--primary) 10%, var(--surface))', padding:'2px 7px', borderRadius:4 }}>Streaming</span>
             )}
             {(model.id === 'hinglish-turbo' || model.id === 'hinglish-small' || model.id === 'hinglish-apex') && (
               <span style={{ fontSize:10, color:'var(--text-muted)', background:'var(--surface-2)', padding:'2px 7px', borderRadius:4 }}>Local · Offline</span>
@@ -146,7 +146,7 @@ function ModelCard({ model, selected, downloaded, dlProgress, downloading, onDow
               {selectable ? 'Downloaded' : 'Downloaded'}
             </span>
           ) : downloading && dlProgress ? (
-            <span style={{ fontSize:11, color:'#F26A4B' }}>{dlProgress.downloaded_mb}/{dlProgress.total_mb} MB ({dlProgress.progress}%)</span>
+            <span style={{ fontSize:11, color:'var(--primary)' }}>{dlProgress.downloaded_mb}/{dlProgress.total_mb} MB ({dlProgress.progress}%)</span>
           ) : dlProgress?.error ? (
             <button onClick={(e) => { e.stopPropagation(); onDownload() }} style={{ fontSize:11, color:'#EF4444', background:'none', border:'1px solid rgba(239,68,68,0.3)', borderRadius:6, padding:'3px 8px', cursor:'pointer' }}>Retry</button>
           ) : (
@@ -290,8 +290,8 @@ export function Settings() {
             <button key={opt.value} onClick={() => {
               setMode(opt.value)
               invoke('set_recording_mode', { mode: opt.value }).catch(console.error)
-            }} style={{ flex:1, padding:'14px 16px', borderRadius:10, textAlign:'left', cursor:'pointer', transition:'all 0.15s', background: mode===opt.value ? 'rgba(var(--accent-rgb), 0.12)' : 'var(--surface)', border:`1.5px solid ${mode===opt.value ? 'var(--accent)' : 'var(--border)'}`, boxShadow: mode===opt.value ? '0 0 12px rgba(var(--accent-rgb), 0.15)' : 'none', fontFamily:"'Noto Sans',sans-serif" }}>
-              <div style={{ fontSize:13, fontWeight:600, color: mode===opt.value ? 'var(--accent)' : 'var(--text)', marginBottom:3, transition:'color 0.15s' }}>{opt.label}</div>
+            }} style={{ flex:1, padding:'14px 16px', borderRadius:10, textAlign:'left', cursor:'pointer', transition:'all 0.15s', background: mode===opt.value ? 'color-mix(in oklab, var(--primary) 12%, var(--surface))' : 'var(--surface)', border:`1.5px solid ${mode===opt.value ? 'var(--primary)' : 'var(--border)'}`, boxShadow: mode===opt.value ? '0 0 0 1px var(--primary)' : 'none', fontFamily:"'Noto Sans',sans-serif" }}>
+              <div style={{ fontSize:13, fontWeight:600, color: mode===opt.value ? 'var(--primary)' : 'var(--text)', marginBottom:3, transition:'color 0.15s' }}>{opt.label}</div>
               <div style={{ fontSize:12, color:'var(--text-muted)' }}>{opt.desc}</div>
             </button>
           ))}
@@ -326,8 +326,8 @@ export function Settings() {
               setWidgetStyle(opt.value)
               await invoke('set_setting', { key: 'widget_style', value: opt.value })
               await emit('widget-style-changed', opt.value).catch(console.error)
-            }} style={{ flex:1, padding:'14px 16px', borderRadius:10, textAlign:'left', cursor:'pointer', transition:'all 0.15s', background: widgetStyle===opt.value ? 'rgba(var(--accent-rgb), 0.12)' : 'var(--surface)', border:`1.5px solid ${widgetStyle===opt.value ? 'var(--accent)' : 'var(--border)'}`, boxShadow: widgetStyle===opt.value ? '0 0 12px rgba(var(--accent-rgb), 0.15)' : 'none', fontFamily:"'Noto Sans',sans-serif" }}>
-              <div style={{ fontSize:13, fontWeight:600, color: widgetStyle===opt.value ? 'var(--accent)' : 'var(--text)', marginBottom:3, transition:'color 0.15s' }}>{opt.label}</div>
+            }} style={{ flex:1, padding:'14px 16px', borderRadius:10, textAlign:'left', cursor:'pointer', transition:'all 0.15s', background: widgetStyle===opt.value ? 'color-mix(in oklab, var(--primary) 12%, var(--surface))' : 'var(--surface)', border:`1.5px solid ${widgetStyle===opt.value ? 'var(--primary)' : 'var(--border)'}`, boxShadow: widgetStyle===opt.value ? '0 0 0 1px var(--primary)' : 'none', fontFamily:"'Noto Sans',sans-serif" }}>
+              <div style={{ fontSize:13, fontWeight:600, color: widgetStyle===opt.value ? 'var(--primary)' : 'var(--text)', marginBottom:3, transition:'color 0.15s' }}>{opt.label}</div>
               <div style={{ fontSize:12, color:'var(--text-muted)' }}>{opt.desc}</div>
             </button>
           ))}
@@ -350,11 +350,11 @@ export function Settings() {
             }} style={{
               flex: 1, padding:'10px 8px', borderRadius:8, textAlign:'center',
               cursor:'pointer', transition:'all 0.15s',
-              background: languageMode===opt.value ? 'rgba(242,106,75,0.08)' : 'var(--surface)',
-              border:`1px solid ${languageMode===opt.value ? '#F26A4B' : 'var(--border)'}`,
+              background: languageMode===opt.value ? 'color-mix(in oklab, var(--primary) 12%, var(--surface))' : 'var(--surface)',
+              border:`1px solid ${languageMode===opt.value ? 'var(--primary)' : 'var(--border)'}`,
               fontFamily:"'Noto Sans',sans-serif",
             }}>
-              <div style={{ fontSize:12, fontWeight:600, color: languageMode===opt.value ? '#F26A4B' : 'var(--text)', marginBottom:2 }}>
+              <div style={{ fontSize:12, fontWeight:600, color: languageMode===opt.value ? 'var(--primary)' : 'var(--text)', marginBottom:2 }}>
                 {opt.label}
               </div>
               <div style={{ fontSize:10, color:'var(--text-muted)', lineHeight:1.3 }}>{opt.desc}</div>
@@ -362,7 +362,7 @@ export function Settings() {
           ))}
         </div>
         {languageMode === 'hinglish' && (
-          <div style={{ fontSize:11, color:'var(--text-muted)', background:'rgba(242,106,75,0.04)', border:'1px solid rgba(242,106,75,0.15)', borderRadius:6, padding:'8px 10px' }}>
+          <div style={{ fontSize:11, color:'var(--text-muted)', background:'color-mix(in oklab, var(--primary) 7%, var(--surface))', border:'1px solid color-mix(in oklab, var(--primary) 24%, var(--border))', borderRadius:6, padding:'8px 10px' }}>
             Hinglish mode uses Whisper with Hindi language hint (<code style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10 }}>-l hi</code>) for optimal Hindi+English code-switching. Use Whisper Small or Turbo model.
           </div>
         )}
@@ -433,7 +433,7 @@ export function Settings() {
       {/* Sensitivity */}
       <section style={{ display:'flex', flexDirection:'column', gap:10 }}>
         <label style={{ fontSize:11, fontWeight:500, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em' }}>Mic sensitivity — {Math.round(sensitivity*100)}%</label>
-        <input type="range" min="0" max="1" step="0.05" value={sensitivity} onChange={e=>setSensitivity(+e.target.value)} style={{ width:'100%', accentColor:'#F26A4B', cursor:'pointer' }} />
+        <input type="range" min="0" max="1" step="0.05" value={sensitivity} onChange={e=>setSensitivity(+e.target.value)} style={{ width:'100%', accentColor:'var(--primary)', cursor:'pointer' }} />
       </section>
 
       {/* Groq API Key */}
@@ -441,7 +441,7 @@ export function Settings() {
         <label style={{ fontSize:11, fontWeight:500, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em' }}>Groq API key</label>
         <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="gsk_..."
           style={{ width:'100%', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 16px', color:'var(--text)', fontSize:13, fontFamily:"'JetBrains Mono',monospace", outline:'none' }}
-          onFocus={e=>(e.target.style.borderColor='var(--accent)')}
+          onFocus={e=>(e.target.style.borderColor='var(--primary)')}
           onBlur={e=>(e.target.style.borderColor='var(--border)')} />
         <p style={{ fontSize:12, color:'var(--text-muted)', margin:0 }}>Used automatically for translation and summarization.</p>
       </section>

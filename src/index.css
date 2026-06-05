@@ -5,27 +5,41 @@
 @tailwind utilities;
 
 :root {
-  --bg:           #141414;
-  --bg-2:         #101010;
-  --surface:      #1C1C1C;
-  --surface-2:    #222222;
-  --border:       #2C2C2C;
-  --text:         #E8E3DA;
-  --text-muted:   #8E8A83;
-  --primary:      #D1CFC0;
-  --primary-fg:   #363636;
-  --accent:       #F26A4B;
-  --accent-rgb:   242, 106, 75;
-  --accent-hover: #E05A38;
-  --accent-2:     #EF4444;
-  --idle:         #8E8A83;
-  --listening:    var(--accent);
-  --processing:   #D1CFC0;
-  --success:      #4ADE80;
-  --sidebar-bg:   #101010;
-  --sidebar-text: #E8E3DA;
-  --widget-bg:    rgba(16, 16, 16, 0.94);
-  --widget-border:rgba(44, 44, 44, 0.9);
+  --background: oklch(0.1913 0 0);
+  --foreground: oklch(0.9173 0.0133 82.4015);
+  --card: oklch(0.2264 0 0);
+  --popover: oklch(0.2264 0 0);
+  --primary: oklch(0.8520 0.0205 100.6306);
+  --primary-foreground: oklch(0.3329 0 0);
+  --secondary: oklch(0.2520 0 0);
+  --secondary-foreground: oklch(0.8520 0.0205 100.6306);
+  --muted: oklch(0.2850 0 0);
+  --muted-foreground: oklch(0.6348 0.0113 81.7875);
+  --accent: oklch(0.3329 0 0);
+  --accent-foreground: oklch(0.8520 0.0205 100.6306);
+  --destructive: oklch(0.6368 0.2078 25.3313);
+  --border: oklch(0.2931 0 0);
+  --input: oklch(0.2931 0 0);
+  --ring: oklch(0.8520 0.0205 100.6306);
+  --panel: color-mix(in oklab, oklch(0.1913 0 0) 88%, #000);
+  --bg: var(--background);
+  --bg-2: var(--panel);
+  --surface: var(--card);
+  --surface-2: var(--accent);
+  --text: var(--foreground);
+  --text-muted: var(--muted-foreground);
+  --primary-fg: var(--primary-foreground);
+  --accent-rgb: 217, 211, 190;
+  --accent-hover: var(--foreground);
+  --accent-2: var(--destructive);
+  --idle: var(--muted-foreground);
+  --listening: #38bdf8;
+  --processing: var(--primary);
+  --success: #4ADE80;
+  --sidebar-bg: var(--panel);
+  --sidebar-text: var(--foreground);
+  --widget-bg: color-mix(in oklab, var(--background) 94%, transparent);
+  --widget-border: color-mix(in oklab, var(--border) 90%, transparent);
 
   /* Font rendering */
   -webkit-font-smoothing: antialiased;
@@ -56,7 +70,7 @@ button:focus-visible { outline: 1px solid var(--border); }
 
 /* Premium Brand Orange Selection highlight */
 ::selection {
-  background: rgba(242, 106, 75, 0.28) !important;
-  color: #ffffff !important;
+  background: color-mix(in oklab, var(--primary) 32%, transparent) !important;
+  color: var(--foreground) !important;
 }
 

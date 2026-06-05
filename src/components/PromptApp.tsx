@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   builtInPromptActions,
+  getMeshPromptProvider,
   type MeshPromptProviderId,
 } from "../lib";
 import {

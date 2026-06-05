@@ -175,7 +175,7 @@ export function Toggle({ label, checked, onChange }: { label: string; checked: b
         flexDirection: 'row',
         width: '100%',
         padding: '12px 0',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+        borderBottom: '1px solid var(--border)',
         cursor: 'pointer'
       }}
     >

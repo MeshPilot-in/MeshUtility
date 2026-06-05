@@ -36,7 +36,7 @@ const BORDER: Record<PillState, string> = {
   processing:   '#D1CFC0',
   done:         '#4ADE80',
   error:        '#EF4444',
-  'mic-prompt': '#F26A4B', // Synced Terracotta Orange Setup Border
+  'mic-prompt': '#F26A4B',
 }
 
 const COLOR: Record<PillState, string> = {
@@ -45,7 +45,7 @@ const COLOR: Record<PillState, string> = {
   processing:   '#D1CFC0',
   done:         '#4ADE80',
   error:        '#EF4444',
-  'mic-prompt': '#F26A4B', // Synced Terracotta Orange Setup Text
+  'mic-prompt': '#F26A4B',
 }
 
 interface PopupData {
@@ -287,9 +287,9 @@ export default function WidgetApp() {
 
   const getBackgroundStyle = () => {
     if (widgetStyle === 'invisible') {
-      return 'rgba(18, 18, 18, 0.65)' // Smoked glass for flawless background contrast
+      return 'rgba(18,18,18,0.65)'
     }
-    return 'rgba(13, 13, 13, 0.96)'
+    return 'rgba(13,13,13,0.96)'
   }
 
   const getBackdropFilter = () => {
