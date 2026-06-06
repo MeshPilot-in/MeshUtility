@@ -50,10 +50,27 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Vulkan SDK (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = '1.4.350.0'
+          $sdkRoot = "C:\VulkanSDK\$version"
+          if (-not (Test-Path "$sdkRoot\Bin\glslc.exe")) {
+            $installer = Join-Path $env:RUNNER_TEMP "vulkansdk-windows-X64-$version.exe"
+            Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe" -OutFile $installer
+            Start-Process -FilePath $installer -ArgumentList '--root', $sdkRoot, '--accept-licenses', '--default-answer', '--confirm-command', 'install' -Wait
+          }
+          "VULKAN_SDK=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PATH=$sdkRoot\Bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CMAKE=C:\Program Files\CMake\bin\cmake.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CMAKE_GENERATOR=Visual Studio 17 2022" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CMAKE_GENERATOR_PLATFORM=x64" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: './src-tauri -> C:\mu-target'
 
       - name: Install dependencies
         run: npm install

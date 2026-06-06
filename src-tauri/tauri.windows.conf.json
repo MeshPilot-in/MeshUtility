@@ -1,9 +1,8 @@
 {
   "bundle": {
-    "resources": [
-      "bin/whisper/*",
-      "bin/sherpa/*"
-    ],
+    "resources": {
+      "runtime-libs/DirectML.dll": "DirectML.dll"
+    },
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico"

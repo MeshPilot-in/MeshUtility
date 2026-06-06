@@ -22,6 +22,73 @@ interface MicrophoneStatus {
   error: string | null
 }
 
+type WidgetStyle = 'pill' | 'circle' | 'invisible'
+
+const WIDGET_STYLE_OPTIONS: { value: WidgetStyle; label: string }[] = [
+  { value: 'pill', label: 'Standard Pill' },
+  { value: 'circle', label: 'Circular Logo' },
+  { value: 'invisible', label: 'Invisible Glass' },
+]
+
+function WidgetStylePreview({ style }: { style: WidgetStyle }) {
+  const isCircle = style === 'circle'
+  const isInvisible = style === 'invisible'
+  const width = isCircle ? 32 : 122
+
+  return (
+    <div style={{
+      height: 58,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+      background: isInvisible
+        ? 'linear-gradient(135deg, rgba(255,255,255,0.10) 0 25%, transparent 25% 50%, rgba(255,255,255,0.08) 50% 75%, transparent 75%), #202631'
+        : 'rgba(0,0,0,0.12)',
+      backgroundSize: isInvisible ? '18px 18px' : undefined,
+      marginBottom: 10,
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        width,
+        height: 32,
+        borderRadius: 99,
+        border: `0.5px solid ${isInvisible ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.14)'}`,
+        background: isInvisible
+          ? 'linear-gradient(135deg, rgba(255,255,255,0.13), rgba(255,255,255,0.04) 42%, rgba(255,255,255,0.08)), rgba(12,12,12,0.42)'
+          : 'linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05) 38%, rgba(255,255,255,0.09)), rgba(13,13,13,0.72)',
+        backdropFilter: isInvisible ? 'blur(18px) saturate(150%)' : 'blur(22px) saturate(165%)',
+        WebkitBackdropFilter: isInvisible ? 'blur(18px) saturate(150%)' : 'blur(22px) saturate(165%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.34), inset 0 0 16px rgba(255,255,255,0.08)',
+        clipPath: 'inset(0 round 999px)',
+        isolation: 'isolate',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: isCircle ? 0 : 6,
+        padding: isCircle ? 0 : '0 10px',
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}>
+        <img src="/logo-prompt.png" alt="" width="16" height="16" style={{ borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />
+        {!isCircle && (
+          <span style={{
+            color: isInvisible ? '#F3EEE6' : '#B8B3AA',
+            fontSize: 11,
+            fontWeight: 550,
+            letterSpacing: '0.02em',
+            fontFamily: "'Noto Sans',sans-serif",
+            textShadow: '0 1px 2px rgba(0,0,0,0.55)',
+            whiteSpace: 'nowrap',
+          }}>
+            MeshUtility
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── HotkeyRecorder ────────────────────────────────────────────────────────
 function HotkeyRecorder({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [capturing, setCapturing] = useState(false)
@@ -177,8 +244,8 @@ export function Settings() {
   const [selectedMic, setSelectedMic] = useState<string>('')
   const [micStatus, setMicStatus] = useState<MicrophoneStatus | null>(null)
   const [memoryWorkspacePath, setMemoryWorkspacePath] = useState('')
-  const [memoryStatus, setMemoryStatus] = useState('')
-  const [widgetStyle, setWidgetStyle] = useState<'pill'|'circle'|'invisible'>('pill')
+  const [widgetEnabled, setWidgetEnabled] = useState(true)
+  const [widgetStyle, setWidgetStyle] = useState<WidgetStyle>('pill')
   
   const [saved, setSaved] = useState(false)
   const [dlProgress, setDlProgress] = useState<Record<string, DLProgress>>({})
@@ -207,6 +274,9 @@ export function Settings() {
     invoke<string|null>('get_setting', { key:'sensitivity' }).then(v => v && setSensitivity(+v))
     invoke<string|null>('get_setting', { key:'api_key' }).then(v => v && setApiKey(v))
     invoke<string|null>('get_setting', { key:'memory_workspace_path' }).then(v => v && setMemoryWorkspacePath(v))
+    invoke<string|null>('get_setting', { key:'widget_enabled' }).then(v => {
+      setWidgetEnabled(v == null || (v !== 'false' && v !== '0'))
+    })
     invoke<string|null>('get_setting', { key:'widget_style' }).then(v => {
       if (v === 'pill' || v === 'circle' || v === 'invisible') setWidgetStyle(v)
     })
@@ -221,7 +291,8 @@ export function Settings() {
     })
     const subLoading = listen<string>('model-loading',  e => setLoadingModel(e.payload))
     const subLoaded  = listen<string>('model-loaded',   () => setLoadingModel(''))
-    return () => { sub.then(f=>f()); subLoading.then(f=>f()); subLoaded.then(f=>f()) }
+    const subLoadErr = listen<string>('model-load-error', () => setLoadingModel(''))
+    return () => { sub.then(f=>f()); subLoading.then(f=>f()); subLoaded.then(f=>f()); subLoadErr.then(f=>f()) }
   }, [])
 
   const handleDownload = (model: WhisperModel) => {
@@ -236,10 +307,11 @@ export function Settings() {
   const handleSelect = async (filename: string, modelId?: string) => {
     setSelectedModel(filename)
     setSelectedModelId(modelId ?? '')
+    // Kick off the load in the background — selection feels instant. The spinner
+    // is driven by the model-loading / model-loaded / model-load-error events
+    // emitted by the engine; switching back to an already-warm model is instant.
     setLoadingModel(filename)
-    try { await invoke('load_model', { filename }) }
-    catch(e) { console.error(e) }
-    finally { setLoadingModel('') }
+    invoke('load_model', { filename }).catch(e => { console.error(e); setLoadingModel('') })
     await Promise.all([
       invoke('set_setting', { key:'model', value: filename }),
       invoke('set_setting', { key:'model_id', value: modelId ?? '' }),
@@ -257,6 +329,7 @@ export function Settings() {
       invoke('set_setting', { key:'sensitivity', value: String(sensitivity) }),
       invoke('set_setting', { key:'api_key', value: apiKey }),
       invoke('set_setting', { key:'memory_workspace_path', value: memoryWorkspacePath }),
+      invoke('set_widget_enabled', { enabled: widgetEnabled }),
       invoke('set_setting', { key:'widget_style', value: widgetStyle }),
       invoke('reregister_hotkey', { newHotkey: hotkey }).catch(() => {}),
     ])
@@ -313,22 +386,83 @@ export function Settings() {
         }} />
       </section>
 
+      {/* Widget Visibility */}
+      <section style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        <label style={{ fontSize:11, fontWeight:500, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em' }}>Widget Visibility</label>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={widgetEnabled}
+          onClick={async () => {
+            const next = !widgetEnabled
+            setWidgetEnabled(next)
+            try {
+              await invoke('set_widget_enabled', { enabled: next })
+            } catch (e) {
+              setWidgetEnabled(!next)
+              console.error(e)
+            }
+          }}
+          style={{
+            display:'flex',
+            alignItems:'center',
+            justifyContent:'space-between',
+            gap:16,
+            padding:'14px 16px',
+            borderRadius:10,
+            textAlign:'left',
+            cursor:'pointer',
+            transition:'all 0.15s',
+            background: widgetEnabled ? 'color-mix(in oklab, var(--primary) 12%, var(--surface))' : 'var(--surface)',
+            border:`1.5px solid ${widgetEnabled ? 'var(--primary)' : 'var(--border)'}`,
+            boxShadow: widgetEnabled ? '0 0 0 1px var(--primary)' : 'none',
+            fontFamily:"'Noto Sans',sans-serif",
+          }}
+        >
+          <div>
+            <div style={{ fontSize:13, fontWeight:600, color: widgetEnabled ? 'var(--primary)' : 'var(--text)', marginBottom:3, transition:'color 0.15s' }}>
+              {widgetEnabled ? 'Always visible' : 'Show only while recording'}
+            </div>
+            <div style={{ fontSize:12, color:'var(--text-muted)' }}>
+              {widgetEnabled ? 'The idle widget stays on screen.' : 'The widget appears for hotkey recording and hides when finished.'}
+            </div>
+          </div>
+          <span style={{
+            width:38,
+            height:22,
+            borderRadius:99,
+            padding:2,
+            background: widgetEnabled ? 'var(--primary)' : 'var(--surface-2)',
+            border:`1px solid ${widgetEnabled ? 'var(--primary)' : 'var(--border)'}`,
+            display:'flex',
+            alignItems:'center',
+            justifyContent: widgetEnabled ? 'flex-end' : 'flex-start',
+            flexShrink:0,
+            transition:'all 0.15s',
+          }}>
+            <span style={{
+              width:16,
+              height:16,
+              borderRadius:'50%',
+              background: widgetEnabled ? '#0D0D0D' : 'var(--text-muted)',
+              transition:'all 0.15s',
+            }} />
+          </span>
+        </button>
+      </section>
+
       {/* Widget Style */}
       <section style={{ display:'flex', flexDirection:'column', gap:10 }}>
         <label style={{ fontSize:11, fontWeight:500, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em' }}>Widget Style</label>
         <div style={{ display:'flex', gap:10 }}>
-          {([
-            { value: 'pill', label: 'Standard Pill', desc: 'Sleek rounded capsule with text' },
-            { value: 'circle', label: 'Circular Logo', desc: 'Minimal circular logo only' },
-            { value: 'invisible', label: 'Invisible Glass', desc: 'Translucent background with visible text' }
-          ] as const).map(opt => (
+          {WIDGET_STYLE_OPTIONS.map(opt => (
             <button key={opt.value} onClick={async () => {
               setWidgetStyle(opt.value)
               await invoke('set_setting', { key: 'widget_style', value: opt.value })
               await emit('widget-style-changed', opt.value).catch(console.error)
-            }} style={{ flex:1, padding:'14px 16px', borderRadius:10, textAlign:'left', cursor:'pointer', transition:'all 0.15s', background: widgetStyle===opt.value ? 'color-mix(in oklab, var(--primary) 12%, var(--surface))' : 'var(--surface)', border:`1.5px solid ${widgetStyle===opt.value ? 'var(--primary)' : 'var(--border)'}`, boxShadow: widgetStyle===opt.value ? '0 0 0 1px var(--primary)' : 'none', fontFamily:"'Noto Sans',sans-serif" }}>
-              <div style={{ fontSize:13, fontWeight:600, color: widgetStyle===opt.value ? 'var(--primary)' : 'var(--text)', marginBottom:3, transition:'color 0.15s' }}>{opt.label}</div>
-              <div style={{ fontSize:12, color:'var(--text-muted)' }}>{opt.desc}</div>
+            }} type="button" aria-pressed={widgetStyle === opt.value} style={{ flex:1, padding:'12px', borderRadius:10, textAlign:'left', cursor:'pointer', transition:'all 0.15s', background: widgetStyle===opt.value ? 'color-mix(in oklab, var(--primary) 12%, var(--surface))' : 'var(--surface)', border:`1.5px solid ${widgetStyle===opt.value ? 'var(--primary)' : 'var(--border)'}`, boxShadow: widgetStyle===opt.value ? '0 0 0 1px var(--primary)' : 'none', fontFamily:"'Noto Sans',sans-serif" }}>
+              <WidgetStylePreview style={opt.value} />
+              <div style={{ fontSize:13, fontWeight:600, color: widgetStyle===opt.value ? 'var(--primary)' : 'var(--text)', textAlign:'center', transition:'color 0.15s' }}>{opt.label}</div>
             </button>
           ))}
         </div>

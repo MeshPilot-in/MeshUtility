@@ -5,6 +5,7 @@ mod audio;
 mod transcription;
 mod injection;
 mod clipboard;
+mod engine;
 
 use std::sync::{Arc, Mutex};
 use std::collections::BTreeMap;
@@ -22,6 +23,7 @@ use arboard::Clipboard;
 use serde::{Deserialize, Serialize};
 
 const MAX_HISTORY: usize = 10;
+const WIDGET_BOTTOM_MARGIN_PX: u32 = 96;
 
 // ─── Shared State ────────────────────────────────────────────────────────────
 
@@ -607,8 +609,48 @@ fn position_widget_bottom_center(app: &tauri::AppHandle) {
     let monitor_size = monitor.size();
     let widget_size = widget.outer_size().unwrap_or_else(|_| tauri::PhysicalSize::new(192, 56));
     let x = monitor_position.x + ((monitor_size.width.saturating_sub(widget_size.width)) / 2) as i32;
-    let y = monitor_position.y + monitor_size.height.saturating_sub(widget_size.height + 32) as i32;
+    let y = monitor_position.y + monitor_size.height.saturating_sub(widget_size.height + WIDGET_BOTTOM_MARGIN_PX) as i32;
     let _ = widget.set_position(PhysicalPosition::new(x, y));
+}
+
+fn widget_enabled_from_db() -> bool {
+    db::get_setting("widget_enabled".to_string())
+        .map(|value| value != "false" && value != "0")
+        .unwrap_or(true)
+}
+
+fn show_widget_window(app: &AppHandle) -> Result<(), String> {
+    position_widget_bottom_center(app);
+    let widget = app
+        .get_webview_window("widget")
+        .ok_or_else(|| "Widget window is unavailable.".to_string())?;
+    widget.show().map_err(|err| format!("Failed to show widget: {err}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn show_widget(app: AppHandle) -> Result<(), String> {
+    show_widget_window(&app)
+}
+
+#[tauri::command]
+fn hide_widget(app: AppHandle) -> Result<(), String> {
+    if let Some(widget) = app.get_webview_window("widget") {
+        widget.hide().map_err(|err| format!("Failed to hide widget: {err}"))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_widget_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    db::set_setting("widget_enabled".to_string(), enabled.to_string());
+    let _ = app.emit("widget-visibility-changed", enabled);
+    if enabled {
+        show_widget_window(&app)?;
+    } else {
+        hide_widget(app)?;
+    }
+    Ok(())
 }
 
 fn show_overlay_window(app: &AppHandle) -> Result<(), String> {
@@ -652,20 +694,25 @@ fn open_main_window(app: &AppHandle) -> Result<(), String> {
 }
 
 fn show_startup_windows(app: &tauri::AppHandle, autostart: bool) {
+    let widget_enabled = widget_enabled_from_db();
     if autostart {
         let app_clone = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(800));
             position_widget_bottom_center(&app_clone);
-            if let Some(widget) = app_clone.get_webview_window("widget") {
-                let _ = widget.show();
+            if widget_enabled {
+                if let Some(widget) = app_clone.get_webview_window("widget") {
+                    let _ = widget.show();
+                }
             }
         });
     } else {
         position_widget_bottom_center(app);
-        if let Some(widget) = app.get_webview_window("widget") {
-            let _ = widget.show();
-            let _ = widget.set_focus();
+        if widget_enabled {
+            if let Some(widget) = app.get_webview_window("widget") {
+                let _ = widget.show();
+                let _ = widget.set_focus();
+            }
         }
         if let Some(main) = app.get_webview_window("main") {
             let _ = main.show();
@@ -679,32 +726,44 @@ fn show_startup_windows(app: &tauri::AppHandle, autostart: bool) {
 #[tauri::command]
 fn load_model(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
     filename: String,
 ) -> Result<(), String> {
-    if filename == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8" {
+    // Resolve the on-disk path for the requested model.
+    let model_path = if filename == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8" {
         if !transcription::parakeet_bundle_ready() {
             return Err("Parakeet V3 model files are incomplete. Download Parakeet V3 again from Settings.".into());
         }
-        *state.selected_model.lock().unwrap() = Some(transcription::parakeet_bundle_dir().to_string_lossy().to_string());
-        db::DB_CONN.lock().unwrap()
-            .execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('model',?)", [&filename]).ok();
-        let _ = app.emit("model-loaded", &filename);
-        return Ok(());
-    }
+        transcription::parakeet_bundle_dir().to_string_lossy().to_string()
+    } else {
+        if !filename.ends_with(".bin") {
+            return Err("This model is not selectable by the local engine.".into());
+        }
+        let path = audio::models_dir().join(&filename);
+        if !path.exists() {
+            return Err(format!("Model file not found: {}", filename));
+        }
+        path.to_string_lossy().to_string()
+    };
 
-
-    if !filename.ends_with(".bin") {
-        return Err("This model is not selectable by the local engine.".into());
+    // Record the selection immediately so it survives a restart and is used by
+    // the next dictation even if the background load hasn't finished yet.
+    {
+        let state = app.state::<AppState>();
+        *state.selected_model.lock().unwrap() = Some(model_path.clone());
     }
-    let model_path = audio::models_dir().join(&filename);
-    if !model_path.exists() {
-        return Err(format!("Model file not found: {}", filename));
-    }
-    *state.selected_model.lock().unwrap() = Some(model_path.to_string_lossy().to_string());
     db::DB_CONN.lock().unwrap()
         .execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('model',?)", [&filename]).ok();
-    let _ = app.emit("model-loaded", &filename);
+
+    // Load into the warm engine in the background so selecting a model feels
+    // instant. The engine emits "model-loading" / "model-loaded" /
+    // "model-load-error" events that drive the UI spinner. Already-warm models
+    // (e.g. switching back to one you used before) load in microseconds.
+    let voice_engine = app.state::<engine::VoiceEngine>().inner().clone();
+    std::thread::spawn(move || {
+        if let Err(e) = voice_engine.load_model(&model_path) {
+            eprintln!("[engine] background load failed: {e}");
+        }
+    });
     Ok(())
 }
 
@@ -1173,9 +1232,26 @@ fn main() {
                 hotkey_down,
                 current_hotkey,
                 rec_mode:       rec_mode.clone(),
-                selected_model: Mutex::new(saved_model_path),
+                selected_model: Mutex::new(saved_model_path.clone()),
                 language_mode: Mutex::new(saved_language_mode),
             });
+
+            // ── In-process speech engine (keeps the model warm in memory) ──
+            // Route whisper.cpp / ggml's stderr spam through the `log` crate.
+            // The app installs no logger, so these messages are simply dropped.
+            whisper_rs::install_logging_hooks();
+            engine::apply_accelerators();
+            let voice_engine = engine::VoiceEngine::new(app.handle().clone());
+            app.manage(voice_engine.clone());
+            // Warm-load the previously selected model in the background so the
+            // first dictation is already hot instead of paying a cold reload.
+            if let Some(path) = saved_model_path.clone() {
+                std::thread::spawn(move || {
+                    if let Err(e) = voice_engine.load_model(&path) {
+                        eprintln!("[engine] warm load failed: {e}");
+                    }
+                });
+            }
 
             audio::start_level_emitter(app.handle().clone(), is_recording.clone());
 
@@ -1372,6 +1448,9 @@ fn main() {
             reregister_hotkey,
             set_recording_mode,
             show_main_window,
+            show_widget,
+            hide_widget,
+            set_widget_enabled,
             get_language_mode,
             set_language_mode,
             
