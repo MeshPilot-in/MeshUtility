@@ -50,7 +50,6 @@ opencode.json
 .cursor/mcp.json
 .agents/mcp_config.json
 meshmcp.local.ps1
-
 # Local agent/tooling state (not part of the project)
 .commandcode/
 .meshmemory/
