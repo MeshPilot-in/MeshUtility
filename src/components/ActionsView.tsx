@@ -73,8 +73,8 @@ export function ActionsView({ settings, saveSettings }: { settings: SettingsStat
             value={settings.enhancePromptMode}
             onChange={(e) => void saveSettings({ enhancePromptMode: e.target.value as SettingsState["enhancePromptMode"] })}
             style={{
-              background: 'rgba(16, 16, 16, 0.6)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
               borderRadius: '8px',
               padding: '0 36px 0 12px',
               height: '38px',
@@ -108,8 +108,8 @@ export function ActionsView({ settings, saveSettings }: { settings: SettingsStat
             value={selectedActionId}
             onChange={(e) => setSelectedActionId(e.target.value)}
             style={{
-              background: 'rgba(16, 16, 16, 0.6)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
               borderRadius: '8px',
               padding: '0 36px 0 12px',
               height: '38px',

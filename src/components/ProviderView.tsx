@@ -164,7 +164,7 @@ export function ProviderView(props: {
 
   return (
     <div className="stack" style={{ maxWidth: '800px', margin: '0 auto', gap: '24px', padding: '16px 24px' }}>
-      <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '20px', marginBottom: '8px' }}>
+      <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '20px', marginBottom: '8px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: '4px 0 0 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <KeyRound size={18} style={{ color: 'var(--accent)' }} /> AI Providers Configuration
         </h2>
@@ -181,8 +181,8 @@ export function ProviderView(props: {
             void saveProvider({ provider: selectedId, model: selectedProv.defaultModel });
           }}
           style={{
-            background: 'rgba(16, 16, 16, 0.6)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
             padding: '0 36px 0 12px',
             height: '38px',
@@ -200,7 +200,7 @@ export function ProviderView(props: {
       </div>
 
       {/* Divider */}
-      <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }} />
+      <div style={{ borderBottom: '1px solid var(--border)' }} />
 
       {/* 2. Provider Parameters Area */}
       <div className="stack" style={{ gap: '20px' }}>
@@ -220,8 +220,8 @@ export function ProviderView(props: {
             value={state.settings.provider.model}
             onChange={(event) => void saveProvider({ ...state.settings.provider, model: event.target.value })}
             style={{
-              background: 'rgba(16, 16, 16, 0.6)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
               borderRadius: '8px',
               padding: '0 36px 0 12px',
               height: '38px',
@@ -253,8 +253,8 @@ export function ProviderView(props: {
                     placeholder={provider.endpoint.baseUrl}
                     style={{
                       flex: 1,
-                      background: 'rgba(16, 16, 16, 0.6)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      background: 'var(--card)',
+                      border: '1px solid var(--border)',
                       borderRadius: '8px',
                       padding: '0 12px',
                       height: '38px',
@@ -264,8 +264,8 @@ export function ProviderView(props: {
                   <button 
                     onClick={() => void saveProvider({ ...state.settings.provider, baseUrl: "" })}
                     style={{
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      background: 'var(--muted)',
+                      border: '1px solid var(--border)',
                       borderRadius: '8px',
                       padding: '0 16px',
                       cursor: 'pointer',
@@ -292,8 +292,8 @@ export function ProviderView(props: {
                 placeholder={hasSavedKey ? "••••••••••••••••••••••••••••••••" : `Enter ${provider.label} API Key`}
                 style={{
                   flex: 1,
-                  background: 'rgba(16, 16, 16, 0.6)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0 40px 0 12px',
                   height: '38px',

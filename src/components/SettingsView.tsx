@@ -5,7 +5,7 @@ import { Toggle, type SettingsState, fallbackSettings } from "./PromptCommon";
 export function SettingsView({ settings, saveSettings }: { settings: SettingsState; saveSettings: (patch: Partial<SettingsState>) => Promise<void> }) {
   return (
     <div className="stack" style={{ maxWidth: '800px', margin: '0 auto', gap: '24px', padding: '16px 24px' }}>
-      <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '20px', marginBottom: '8px' }}>
+      <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '20px', marginBottom: '8px' }}>
         <span className="eyebrow">Enhancer Settings</span>
         <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: '4px 0 0 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Settings size={18} style={{ color: 'var(--accent)' }} /> Enhancer Configuration
@@ -26,7 +26,7 @@ export function SettingsView({ settings, saveSettings }: { settings: SettingsSta
       </div>
 
       {/* Divider */}
-      <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }} />
+      <div style={{ borderBottom: '1px solid var(--border)' }} />
 
       {/* Section 2: Shortcuts & Bindings */}
       <div style={{ padding: '8px 0' }}>
@@ -46,8 +46,8 @@ export function SettingsView({ settings, saveSettings }: { settings: SettingsSta
                 onChange={(event) => void saveSettings({ shortcut: event.target.value })}
                 style={{
                   flex: 1,
-                  background: 'rgba(16, 16, 16, 0.6)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0 12px',
                   height: '38px',
@@ -58,8 +58,8 @@ export function SettingsView({ settings, saveSettings }: { settings: SettingsSta
               <button 
                 onClick={() => void saveSettings({ shortcut: fallbackSettings.shortcut })}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  background: 'var(--muted)',
+                  border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0 16px',
                   cursor: 'pointer',
@@ -76,7 +76,7 @@ export function SettingsView({ settings, saveSettings }: { settings: SettingsSta
       </div>
 
       {/* Divider */}
-      <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }} />
+      <div style={{ borderBottom: '1px solid var(--border)' }} />
 
       {/* Section 3: Data Privacy */}
       <div style={{ padding: '8px 0' }}>
