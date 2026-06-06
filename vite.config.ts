@@ -14,7 +14,7 @@ export default defineConfig({
     fs: {
       allow: ['..'],
     },
-    port: 1421,
+    port: 5170,
     strictPort: true,
   },
   envPrefix: ["VITE_", "TAURI_"],

@@ -100,7 +100,7 @@ export function ResultPopup({
         <div style={{
           position: 'absolute', left: 0, top: 0, bottom: 0,
           width: `${progress}%`,
-          background: '#F26A4B',
+          background: 'var(--primary)',
           transition: 'width 50ms linear',
         }} />
       </div>
@@ -109,7 +109,7 @@ export function ResultPopup({
       <div style={{ padding: '14px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
           <p style={{
-            color: '#E8E3DA', fontSize: 13, lineHeight: 1.55,
+            color: 'var(--text)', fontSize: 13, lineHeight: 1.55,
             margin: 0, flex: 1,
             display: '-webkit-box',
             WebkitLineClamp: 3,
@@ -137,7 +137,7 @@ export function ResultPopup({
           <span style={{ color: '#333', fontSize: 11 }}>·</span>
           <span style={{ color: '#5C5A56', fontSize: 11 }}>{dur}</span>
           <span style={{ color: '#333', fontSize: 11 }}>·</span>
-          <span style={{ color: source === 'cloud' ? '#F26A4B' : '#5C5A56', fontSize: 11 }}>
+          <span style={{ color: source === 'cloud' ? 'var(--primary)' : 'var(--text-muted)', fontSize: 11 }}>
             {source === 'cloud' ? 'Cloud' : 'Local'}
           </span>
           <div style={{ flex: 1 }} />
@@ -147,7 +147,7 @@ export function ResultPopup({
               background: 'none',
               border: '0.5px solid #2C2C2C',
               borderRadius: 6,
-              color: copied ? '#4ADE80' : '#8E8A83',
+              color: copied ? 'var(--success)' : 'var(--text-muted)',
               fontSize: 11, cursor: 'pointer',
               padding: '3px 8px',
               transition: 'all 150ms',

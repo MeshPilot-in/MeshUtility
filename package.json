@@ -1,7 +1,8 @@
 {
   "name": "meshutility",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.6",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

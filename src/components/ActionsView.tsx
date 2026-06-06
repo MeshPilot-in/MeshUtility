@@ -73,8 +73,8 @@ export function ActionsView({ settings, saveSettings }: { settings: SettingsStat
             value={settings.enhancePromptMode}
             onChange={(e) => void saveSettings({ enhancePromptMode: e.target.value as SettingsState["enhancePromptMode"] })}
             style={{
-              background: 'rgba(16, 16, 16, 0.6)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
               borderRadius: '8px',
               padding: '0 36px 0 12px',
               height: '38px',
@@ -82,10 +82,10 @@ export function ActionsView({ settings, saveSettings }: { settings: SettingsStat
               cursor: 'pointer',
             }}
           >
-            <option value="auto" style={{ background: '#1c1c1c' }}>Auto (Scales based on task complexity)</option>
-            <option value="concise" style={{ background: '#1c1c1c' }}>Concise (Compact & focused output)</option>
-            <option value="structured" style={{ background: '#1c1c1c' }}>Structured (Well-organized system output)</option>
-            <option value="detailed" style={{ background: '#1c1c1c' }}>Detailed (Comprehensive details)</option>
+            <option value="auto" style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}>Auto (Scales based on task complexity)</option>
+            <option value="concise" style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}>Concise (Compact & focused output)</option>
+            <option value="structured" style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}>Structured (Well-organized system output)</option>
+            <option value="detailed" style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}>Detailed (Comprehensive details)</option>
           </select>
           <span className="helper-text" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
             Sets the scope depth specifically when using the "Enhance Prompt" transformation engine.
@@ -108,8 +108,8 @@ export function ActionsView({ settings, saveSettings }: { settings: SettingsStat
             value={selectedActionId}
             onChange={(e) => setSelectedActionId(e.target.value)}
             style={{
-              background: 'rgba(16, 16, 16, 0.6)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
               borderRadius: '8px',
               padding: '0 36px 0 12px',
               height: '38px',
@@ -118,7 +118,7 @@ export function ActionsView({ settings, saveSettings }: { settings: SettingsStat
             }}
           >
             {builtInPromptActions.map((action) => (
-              <option key={action.id} value={action.id} style={{ background: '#1c1c1c', color: 'var(--text-primary)' }}>
+              <option key={action.id} value={action.id} style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}>
                 {action.label}
               </option>
             ))}
@@ -174,7 +174,7 @@ export function ActionsView({ settings, saveSettings }: { settings: SettingsStat
           <div className="directives-section" style={{ gap: '8px' }}>
             <h4 className="action-profile-title" style={{ fontSize: '10px' }}>Custom Instruction Token Limit</h4>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span className="tag" style={{ fontSize: '11px', color: 'var(--accent)', borderColor: 'rgba(242, 106, 75, 0.3)', background: 'rgba(242, 106, 75, 0.05)' }}>
+              <span className="tag" style={{ fontSize: '11px', color: 'var(--primary)', borderColor: 'color-mix(in oklab, var(--primary) 32%, var(--border))', background: 'color-mix(in oklab, var(--primary) 8%, var(--surface))' }}>
                 Max output: {actionDetails.maxOutputTokens} tokens
               </span>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>

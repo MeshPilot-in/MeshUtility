@@ -5,31 +5,62 @@
 @tailwind utilities;
 
 :root {
-  --bg-page: #141414;
-  --bg-sidebar: #101010;
-  --bg-surface: #1c1c1c;
-  --bg-surface-elevated: #363636;
-  --bg-hover: #222222;
-  
-  --border: #2c2c2c;
-  --border-subtle: #222222;
-  --border-focus: var(--accent); /* Terracotta orange from meshvoice */
-  
-  --text-primary: #e8e3da;
-  --text-secondary: #8e8a83;
-  --text-muted: #5c5a56;
-  --text-accent: var(--accent); /* Terracotta orange highlight */
-  
-  --primary-cta: #d1cfc0;
-  --primary-cta-text: #363636;
-  
+  --background: oklch(0.1913 0 0);
+  --foreground: oklch(0.9173 0.0133 82.4015);
+  --card: oklch(0.2264 0 0);
+  --popover: oklch(0.2264 0 0);
+  --primary: oklch(0.8520 0.0205 100.6306);
+  --primary-foreground: oklch(0.3329 0 0);
+  --secondary: oklch(0.2520 0 0);
+  --secondary-foreground: oklch(0.8520 0.0205 100.6306);
+  --muted: oklch(0.2850 0 0);
+  --muted-foreground: oklch(0.6348 0.0113 81.7875);
+  --accent: oklch(0.3329 0 0);
+  --accent-foreground: oklch(0.8520 0.0205 100.6306);
+  --destructive: oklch(0.6368 0.2078 25.3313);
+  --border: oklch(0.2931 0 0);
+  --input: oklch(0.2931 0 0);
+  --ring: oklch(0.8520 0.0205 100.6306);
+  --panel: color-mix(in oklab, oklch(0.1913 0 0) 88%, #000);
+  --bg-page: var(--background);
+  --bg-sidebar: var(--panel);
+  --bg-surface: var(--card);
+  --bg-surface-elevated: var(--accent);
+  --bg-hover: var(--muted);
+  --border-subtle: var(--muted);
+  --border-focus: var(--ring);
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
+  --text-muted: color-mix(in oklab, var(--muted-foreground) 66%, var(--background));
+  --text-accent: var(--primary);
+  --primary-cta: var(--primary);
+  --primary-cta-text: var(--primary-foreground);
   --error: #ef4444;
   --success: #44ff88;
-  
-  --radius: 6px;
-  
-  --font-sans: 'Noto Sans', sans-serif;
-  --font-mono: 'Geist Mono', 'DM Mono', monospace;
+  --radius: 8px;
+  --shadow-xs: 0px 6px 15px 0px hsl(0 0% 0% / 0.15);
+  --shadow-sm: 0px 6px 15px 0px hsl(0 0% 0% / 0.30), 0px 1px 2px -1px hsl(0 0% 0% / 0.30);
+  --transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+  --bg: var(--background);
+  --bg-2: var(--panel);
+  --surface: var(--card);
+  --surface-2: var(--accent);
+  --elevated: var(--accent);
+  --text: var(--foreground);
+  --text-2: var(--muted-foreground);
+  --primary-fg: var(--primary-foreground);
+  --accent-rgb: 217, 211, 190;
+  --accent-hover: var(--foreground);
+  --accent-2: var(--destructive);
+  --idle: var(--muted-foreground);
+  --listening: #38bdf8;
+  --processing: var(--primary);
+  --sidebar-bg: var(--panel);
+  --sidebar-text: var(--foreground);
+  --widget-bg: color-mix(in oklab, var(--background) 94%, transparent);
+  --widget-border: color-mix(in oklab, var(--border) 90%, transparent);
+  --font-sans: 'Noto Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 * {
@@ -459,11 +490,11 @@ nav {
 }
 
 .meshprompt-theme button:disabled {
-  opacity: 0.35;
+  opacity: 0.72;
   cursor: not-allowed;
-  background: rgba(255, 255, 255, 0.02) !important;
-  border-color: rgba(255, 255, 255, 0.05) !important;
-  color: var(--text-muted) !important;
+  background: color-mix(in oklab, var(--muted) 72%, var(--background)) !important;
+  border-color: color-mix(in oklab, var(--border) 82%, var(--foreground)) !important;
+  color: color-mix(in oklab, var(--foreground) 72%, var(--background)) !important;
 }
 
 .meshprompt-theme button.primary {
@@ -471,6 +502,11 @@ nav {
   color: var(--primary-cta-text);
   border: 1px solid var(--primary-cta);
   font-weight: 600;
+}
+
+.meshprompt-theme select option {
+  background: var(--surface);
+  color: var(--text-primary);
 }
 
 .meshprompt-theme button.primary:hover:not(:disabled) {
@@ -615,15 +651,15 @@ nav {
 }
 
 .provider-row.active {
-  border-color: var(--accent);
-  background: rgba(242, 106, 75, 0.04);
-  box-shadow: 0 0 16px rgba(242, 106, 75, 0.15), inset 0 0 8px rgba(242, 106, 75, 0.05);
+  border-color: var(--primary);
+  background: color-mix(in oklab, var(--primary) 7%, var(--surface));
+  box-shadow: 0 0 16px color-mix(in oklab, var(--primary) 16%, transparent), inset 0 0 8px color-mix(in oklab, var(--primary) 7%, transparent);
 }
 
 .provider-row.active .provider-row-icon {
-  background: rgba(242, 106, 75, 0.1);
-  border-color: rgba(242, 106, 75, 0.25);
-  color: var(--accent);
+  background: color-mix(in oklab, var(--primary) 12%, var(--surface));
+  border-color: color-mix(in oklab, var(--primary) 28%, var(--border));
+  color: var(--primary);
 }
 
 .provider-row.active .provider-row-icon img {
@@ -632,11 +668,11 @@ nav {
 }
 
 .provider-row.active strong {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .provider-row.active span {
-  color: rgba(242, 106, 75, 0.7);
+  color: color-mix(in oklab, var(--primary) 72%, var(--text-secondary));
 }
 
 .provider-status-dot {
@@ -1079,14 +1115,14 @@ nav {
 }
 
 .toggle-switch input:checked + .toggle-slider {
-  background-color: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 10px rgba(242, 106, 75, 0.3);
+  background-color: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--primary) 34%, transparent);
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
   transform: translateX(18px);
-  background-color: #ffffff;
+  background-color: var(--primary-foreground);
 }
 
 .toggle-switch:hover .toggle-slider:before {
@@ -1111,12 +1147,12 @@ nav {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  color: var(--accent);
-  background: rgba(242, 106, 75, 0.08);
-  border: 1px solid rgba(242, 106, 75, 0.25);
+  color: var(--primary);
+  background: color-mix(in oklab, var(--primary) 10%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
   padding: 3px 8px;
   border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(242, 106, 75, 0.03);
+  box-shadow: 0 2px 8px color-mix(in oklab, var(--primary) 5%, transparent);
 }
 
 .slider-input-wrapper {
@@ -1158,8 +1194,8 @@ nav {
   width: 16px;
   border-radius: 50%;
   background: #ffffff;
-  border: 2px solid var(--accent);
-  box-shadow: 0 0 8px rgba(242, 106, 75, 0.4);
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--primary) 40%, transparent);
   cursor: pointer;
   -webkit-appearance: none;
   margin-top: -6px;
@@ -1168,7 +1204,7 @@ nav {
 
 .custom-range-slider::-webkit-slider-thumb:hover {
   transform: scale(1.25);
-  box-shadow: 0 0 12px rgba(242, 106, 75, 0.6);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--primary) 60%, transparent);
 }
 
 /* Mozilla Firefox support */
@@ -1185,23 +1221,23 @@ nav {
   width: 16px;
   border-radius: 50%;
   background: #ffffff;
-  border: 2px solid var(--accent);
-  box-shadow: 0 0 8px rgba(242, 106, 75, 0.4);
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--primary) 40%, transparent);
   cursor: pointer;
   transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
 }
 
 .custom-range-slider::-moz-range-thumb:hover {
   transform: scale(1.25);
-  box-shadow: 0 0 12px rgba(242, 106, 75, 0.6);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--primary) 60%, transparent);
 }
 
 /* Shortcut input design */
 .premium-shortcut-container {
   display: flex;
   align-items: center;
-  background: rgba(16, 16, 16, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px 8px;
   gap: 8px;
@@ -1210,8 +1246,8 @@ nav {
 }
 
 .premium-shortcut-container:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 10px rgba(242, 106, 75, 0.12);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--primary) 14%, transparent);
 }
 
 .premium-shortcut-container input.shortcut-input {
@@ -1229,8 +1265,8 @@ nav {
 }
 
 .premium-shortcut-container button {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  background: var(--muted) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 6px !important;
   font-size: 11px !important;
   padding: 0 10px !important;
@@ -1263,11 +1299,11 @@ nav {
 
 /* Premium Buttons */
 .meshprompt-theme button.btn-premium-save {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
-  color: #ffffff !important;
-  border: none !important;
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+  border: 1px solid var(--primary) !important;
   font-weight: 600 !important;
-  box-shadow: 0 4px 12px rgba(242, 106, 75, 0.2) !important;
+  box-shadow: 0 4px 12px color-mix(in oklab, var(--primary) 22%, transparent) !important;
   transition: all 0.2s ease !important;
   height: 38px !important;
   padding: 0 20px !important;
@@ -1276,7 +1312,7 @@ nav {
 
 .meshprompt-theme button.btn-premium-save:hover:not(:disabled) {
   transform: translateY(-1px) !important;
-  box-shadow: 0 6px 16px rgba(242, 106, 75, 0.35) !important;
+  box-shadow: 0 6px 16px color-mix(in oklab, var(--primary) 35%, transparent) !important;
   filter: brightness(1.1) !important;
 }
 
@@ -1297,9 +1333,9 @@ nav {
 }
 
 .meshprompt-theme button.btn-premium-test {
-  background: rgba(255, 255, 255, 0.02) !important;
-  border: 1px solid rgba(242, 106, 75, 0.4) !important;
-  color: var(--accent) !important;
+  background: var(--surface) !important;
+  border: 1px solid color-mix(in oklab, var(--primary) 44%, var(--border)) !important;
+  color: var(--primary) !important;
   font-weight: 600 !important;
   transition: all 0.2s ease !important;
   height: 38px !important;
@@ -1308,10 +1344,10 @@ nav {
 }
 
 .meshprompt-theme button.btn-premium-test:hover:not(:disabled) {
-  background: rgba(242, 106, 75, 0.08) !important;
-  border-color: var(--accent) !important;
-  color: var(--accent) !important;
-  box-shadow: 0 0 12px rgba(242, 106, 75, 0.1) !important;
+  background: color-mix(in oklab, var(--primary) 10%, var(--surface)) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
+  box-shadow: 0 0 12px color-mix(in oklab, var(--primary) 12%, transparent) !important;
 }
 
 .meshprompt-theme button.btn-premium-clear {
@@ -1450,13 +1486,13 @@ nav {
 
 @keyframes pulse-glow {
   0% {
-    box-shadow: 0 0 0 0 rgba(242, 106, 75, 0.4);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 40%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 4px rgba(242, 106, 75, 0);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--primary) 0%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(242, 106, 75, 0);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent);
   }
 }
 
@@ -1564,7 +1600,7 @@ nav {
 
 .overlay-search-container:focus-within {
   border-color: var(--border-focus) !important;
-  box-shadow: 0 0 8px rgba(242, 106, 75, 0.15) !important;
+  box-shadow: 0 0 8px color-mix(in oklab, var(--primary) 18%, transparent) !important;
 }
 
 .overlay-search-input {
@@ -1803,9 +1839,9 @@ nav {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: rgba(242, 106, 75, 0.1);
-  border: 1px solid rgba(242, 106, 75, 0.2);
-  color: var(--accent);
+  background: color-mix(in oklab, var(--primary) 12%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--primary) 24%, var(--border));
+  color: var(--primary);
 }
 
 .action-meta-info {

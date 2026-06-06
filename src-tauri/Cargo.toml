@@ -1,9 +1,14 @@
 [package]
-name = "meshvoice"
-version = "0.2.3"
+name = "meshutility"
+version = "1.0.6"
 description = "A native dictation app"
 authors = ["MeshPilot"]
+license = "Apache-2.0"
 edition = "2021"
+
+[features]
+default = []
+whisper-vulkan = ["transcribe-rs/whisper-vulkan"]
 
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
@@ -27,8 +32,22 @@ once_cell = "1"
 futures-util = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
+# In-process speech engine (same crate Handy uses). Keeps the model loaded in
+# memory and runs inference in-process instead of spawning a subprocess that
+# reloads the model from disk on every dictation.
+transcribe-rs = { version = "0.3.8", features = ["onnx", "whisper-cpp"] }
+# Direct dep solely to call `whisper_rs::install_logging_hooks()`, which routes
+# whisper.cpp/ggml's noisy stderr output through the `log` crate (dropped, since
+# the app installs no logger). Must match the version transcribe-rs uses.
+whisper-rs = "0.16"
+# Parakeet (transcribe-rs format) ships as a .tar.gz bundle that we extract.
+tar = "0.4"
+flate2 = "1.0"
 
 [target.'cfg(windows)'.dependencies]
+# GPU acceleration on Windows, matching Handy: DirectML for the Parakeet ONNX
+# graph and Vulkan for whisper.cpp.
+transcribe-rs = { version = "0.3.8", features = ["onnx", "whisper-cpp", "whisper-vulkan", "ort-directml"] }
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",

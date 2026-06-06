@@ -413,11 +413,16 @@ pub async fn stop_recording_and_transcribe(
     }
 
 
-    // Save WAV for history playback
+    // Save WAV for history playback in parallel with inference. Handy uses the
+    // same pattern: disk I/O must not delay the model from starting.
     let wav_fname = format!("rec_{}.wav", chrono::Utc::now().timestamp_millis());
     let wav_path  = recordings_dir().join(&wav_fname);
-    save_wav(&wav_path, &samples, 16000).ok();
     let audio_path = wav_path.to_string_lossy().to_string();
+    let samples_for_wav = samples.clone();
+    let wav_path_for_save = wav_path.clone();
+    let wav_save = tokio::task::spawn_blocking(move || {
+        save_wav(&wav_path_for_save, &samples_for_wav, 16000)
+    });
 
     let (text, source) = transcribe(&samples, &state, &wav_path, &app_handle, access_token).await?;
     let text = if source == "parakeet" {
@@ -449,23 +454,40 @@ pub async fn stop_recording_and_transcribe(
     let final_text = crate::injection::apply_dictionary(&text)?;
     crate::injection::inject_text(&final_text)?;
 
-    // Save to history
     let wc = final_text.split_whitespace().count() as i64;
-    crate::db::DB_CONN.lock().unwrap().execute(
-        "INSERT INTO history (text, word_count, duration_ms, source, audio_path) VALUES (?,?,?,?,?)",
-        rusqlite::params![final_text, wc, recorded_duration_ms, source, audio_path],
-    ).ok();
-    crate::db::record_lifetime_stats(wc, recorded_duration_ms);
-    crate::db::prune_history();
-
     let complete = TranscriptionComplete {
         text: final_text.clone(),
         word_count: wc,
         duration_ms: recorded_duration_ms,
-        source,
+        source: source.clone(),
     };
     app_handle.emit("transcription-complete", final_text.clone()).ok();
     app_handle.emit("transcription-complete-detail", complete).ok();
+
+    let final_text_for_history = final_text.clone();
+    tauri::async_runtime::spawn(async move {
+        let saved_audio_path = match wav_save.await {
+            Ok(Ok(())) => Some(audio_path),
+            Ok(Err(err)) => {
+                eprintln!("[MeshVoice] Failed to save recording WAV: {err}");
+                None
+            }
+            Err(err) => {
+                eprintln!("[MeshVoice] WAV save task failed: {err}");
+                None
+            }
+        };
+
+        let _ = tokio::task::spawn_blocking(move || {
+            crate::db::DB_CONN.lock().unwrap().execute(
+                "INSERT INTO history (text, word_count, duration_ms, source, audio_path) VALUES (?,?,?,?,?)",
+                rusqlite::params![final_text_for_history, wc, recorded_duration_ms, source, saved_audio_path],
+            ).ok();
+            crate::db::record_lifetime_stats(wc, recorded_duration_ms);
+            crate::db::prune_history();
+        }).await;
+    });
+
     Ok(final_text)
 }
 
@@ -474,7 +496,7 @@ pub async fn stop_recording_and_transcribe(
 async fn transcribe(
     samples: &[f32],
     state: &tauri::State<'_, crate::AppState>,
-    wav_path: &std::path::Path,
+    _wav_path: &std::path::Path,
     app_handle: &tauri::AppHandle,
     access_token: Option<String>,
 ) -> Result<(String, String), String> {
@@ -512,322 +534,44 @@ async fn transcribe(
         }
     };
 
-    let model_path = state.selected_model.lock().unwrap().clone();
-    if let Some(model) = model_path {
-        if model.contains("hindi2hinglish") {
-            lang_flag = "hi".to_string(); // Force Hindi to bypass slow auto-detection for fine-tuned models
-        }
-        let model_path = std::path::PathBuf::from(&model);
-        if model_path.is_dir() {
-            if model_path.file_name().and_then(|n| n.to_str()) == Some("sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8") {
-                return transcribe_parakeet(&model_path, wav_path, app_handle).await
-                    .map(|text| (text, "parakeet".into()));
-            }
-            return Err("The selected model is outdated or invalid (e.g. Moonshine). Please open Settings and select a valid Whisper model.".into());
-        }
-
-
-        use tauri::Manager;
-        
-        let mut bundled = None;
-        if let Ok(res_dir) = app_handle.path().resource_dir() {
-            let bin_name = if cfg!(target_os = "windows") { "whisper-cli.exe" } else { "whisper-cli" };
-            let path = res_dir.join("bin").join("whisper").join(bin_name);
-            if path.exists() { bundled = Some(path); }
-        }
-
-        // Fallback check for dev layout just in case
-        if bundled.is_none() {
-            if let Ok(exe) = std::env::current_exe() {
-                if let Some(dir) = exe.parent() {
-                    let bin_name = if cfg!(target_os = "windows") { "whisper-cli.exe" } else { "whisper-cli" };
-                    let path_dev = dir.join("..").join("..").join("bin").join("whisper").join(bin_name);
-                    if path_dev.exists() { bundled = Some(path_dev); }
-                }
-            }
-        }
-
-        if let Some(bin) = bundled {
-            return transcribe_subprocess(&bin.to_string_lossy(), &model, wav_path, &lang_flag).await
-                .map(|text| (text, "local".into()));
-        }
-
-        // Fallback to PATH
-        let whisper = ["whisper-cli", "whisper", "whisper.exe", "whisper-cli.exe"]
-            .iter()
-            .find(|&&b| which_in_path(b));
-        if let Some(bin) = whisper {
-            return transcribe_subprocess(bin, &model, wav_path, &lang_flag).await
-                .map(|text| (text, "local".into()));
-        }
-    }
-
-    Err("Local mode requires a downloaded Whisper model. Open Settings and download Base, Tiny, or another model.".into())
-}
-
-pub(crate) async fn transcribe_subprocess(bin: &str, model: &str, wav: &std::path::Path, language: &str) -> Result<String, String> {
-    let log_path = dirs::data_local_dir()
-        .map(|p| p.join("MeshVoice").join("whisper_diag.log"));
-
-    if let Some(ref lp) = log_path {
-        let _ = std::fs::create_dir_all(lp.parent().unwrap());
-        let log_content = format!(
-            "[{:?}] RUNNING WHISPER-CLI\n  bin: {}\n  model: {}\n  wav: {:?}\n  lang: {}\n  current_dir: {:?}\n\n",
-            chrono::Utc::now(), bin, model, wav, language, std::path::Path::new(bin).parent()
-        );
-        let _ = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(lp)
-            .and_then(|mut f| {
-                use std::io::Write;
-                let _ = f.write_all(log_content.as_bytes());
-                Ok(())
-            });
-    }
-
-    let mut command = tokio::process::Command::new(bin);
-    command.kill_on_drop(true);
-
-    // Set working directory to the binary's directory so dependent DLLs (ggml.dll, whisper.dll, SDL2.dll) are found on Windows
-    let bin_path = std::path::Path::new(bin);
-    if let Some(dir) = bin_path.parent() {
-        if !dir.as_os_str().is_empty() {
-            command.current_dir(dir);
-        }
-    }
-    command
-        .args(&[
-            "-m", model,
-            "-f", wav.to_str().unwrap_or(""),
-            "--no-timestamps",
-            "--beam-size", "1",
-            "--best-of", "1",
-            "--threads", "4",
-        ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    // Only pass -l when we have a real language code; whisper-cli has no "auto" option.
-    if language != "auto" && !language.is_empty() {
-        command.args(&["-l", language]);
-    }
-    // The fine-tuned Hinglish models hallucinate if given a prompt. Only prompt standard models.
-    if language == "hi" && !model.contains("hindi2hinglish") {
-        command.args(&["--prompt", "Haan bhai, this is a Hinglish sentence, theek hai?"]);
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-
-    let output_res = command.output().await;
-
-    if let Some(ref lp) = log_path {
-        let log_content = match &output_res {
-            Ok(output) => {
-                format!(
-                    "[{:?}] COMPLETED\n  status: {}\n  stdout: {}\n  stderr: {}\n\n",
-                    chrono::Utc::now(),
-                    output.status,
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
-                )
-            }
-            Err(e) => {
-                format!("[{:?}] SPAWN ERROR: {}\n\n", chrono::Utc::now(), e)
-            }
-        };
-        let _ = std::fs::OpenOptions::new()
-            .append(true)
-            .open(lp)
-            .and_then(|mut f| {
-                use std::io::Write;
-                let _ = f.write_all(log_content.as_bytes());
-                Ok(())
-            });
-    }
-
-    let output = output_res.map_err(|e| format!("whisper-cli error: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("whisper-cli exited with status {}", output.status)
-        } else {
-            format!("whisper-cli failed: {}", stderr)
-        });
-    }
-
-    let raw = String::from_utf8_lossy(&output.stdout).to_string();
-    let clean = raw.lines()
-        .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('['))
-        .collect::<Vec<_>>().join(" ");
-    Ok(clean.trim().to_string())
-}
-
-
-async fn transcribe_parakeet(model_dir: &std::path::Path, wav: &std::path::Path, app_handle: &tauri::AppHandle) -> Result<String, String> {
-    let encoder = model_dir.join("encoder.int8.onnx");
-    let decoder = model_dir.join("decoder.int8.onnx");
-    let joiner  = model_dir.join("joiner.int8.onnx");
-    let tokens  = model_dir.join("tokens.txt");
-    for path in [&encoder, &decoder, &joiner, &tokens] {
-        if !path.exists() {
-            return Err("Parakeet V3 model files are incomplete. Download Parakeet V3 again from Settings.".into());
-        }
-    }
-
-    // Locate the bundled sherpa-onnx-offline.exe from the Tauri resource directory.
-    // The DLLs (sherpa-onnx-c-api.dll, onnxruntime.dll, onnxruntime_providers_shared.dll)
-    // are in the same directory and Windows finds them automatically via current_dir.
     use tauri::Manager;
-    let sherpa_dir = app_handle.path().resource_dir()
-        .map_err(|e| format!("Cannot locate resource dir: {}", e))?
-        .join("bin")
-        .join("sherpa");
-    let bin_name = if cfg!(target_os = "windows") { "sherpa-onnx-offline.exe" } else { "sherpa-onnx-offline" };
-    let runtime = sherpa_dir.join(bin_name);
-    if !runtime.exists() {
-        return Err(format!(
-            "Parakeet runtime not found at {}. Reinstall MeshVoice.",
-            runtime.display()
-        ));
+
+    let model_path = state.selected_model.lock().unwrap().clone();
+    let Some(model) = model_path else {
+        return Err("Local mode requires a downloaded model. Open Settings and download Parakeet V3 or a Whisper model.".into());
+    };
+
+    // A directory is the in-memory Parakeet bundle; a file is a whisper.cpp model.
+    let is_parakeet = std::path::Path::new(&model).is_dir();
+
+    // Fine-tuned Hinglish models expect Hindi and must skip auto-detection.
+    if model.contains("hindi2hinglish") {
+        lang_flag = "hi".to_string();
     }
+    // Standard (non-fine-tuned) whisper benefits from a Hinglish priming prompt.
+    let initial_prompt = if lang_flag == "hi" && !is_parakeet && !model.contains("hindi2hinglish") {
+        Some("Haan bhai, this is a Hinglish sentence, theek hai?".to_string())
+    } else {
+        None
+    };
 
-    let mut command = tokio::process::Command::new(&runtime);
-    command
-        .current_dir(&sherpa_dir)   // DLLs are here — Windows finds them automatically
-        .arg(format!("--tokens={}", tokens.to_string_lossy()))
-        .arg(format!("--encoder={}", encoder.to_string_lossy()))
-        .arg(format!("--decoder={}", decoder.to_string_lossy()))
-        .arg(format!("--joiner={}", joiner.to_string_lossy()))
-        .arg("--model-type=nemo_transducer")
-        .arg("--num-threads=4")
-        .arg("--provider=cpu")
-        .arg("--decoding-method=greedy_search")
-        .arg("--print-args=false")
-        .arg(wav)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+    let source = if is_parakeet { "parakeet" } else { "local" };
 
-    #[cfg(target_os = "windows")]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
+    // Run against the persistent in-memory engine. The model is kept warm in a
+    // cache, so consecutive dictations (and switching back to a previously used
+    // model) skip the expensive reload entirely. `transcribe` lazy-loads if the
+    // model isn't warm yet. Blocking inference is moved off the async runtime.
+    let voice_engine = app_handle.state::<crate::engine::VoiceEngine>().inner().clone();
+    let samples_vec = samples.to_vec();
+    let lang = lang_flag.clone();
+    let model_for_run = model.clone();
+    let text = tokio::task::spawn_blocking(move || {
+        voice_engine.transcribe(&model_for_run, samples_vec, &lang, initial_prompt)
+    })
+    .await
+    .map_err(|e| format!("Transcription task failed: {e}"))??;
 
-    let output = command.output().await
-        .map_err(|e| format!("Parakeet runtime error: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-
-    if !output.status.success() {
-        return Err(if stderr.is_empty() {
-            format!("Parakeet exited with status {}", output.status)
-        } else {
-            format!("Parakeet failed: {}", stderr)
-        });
-    }
-
-    let cleaned = parse_parakeet_output(&stdout);
-    if cleaned.is_empty() {
-        return Err(if stderr.is_empty() {
-            "Parakeet V3 produced no transcript. Try again with clearer speech or redownload the model from Settings.".into()
-        } else {
-            format!("Parakeet V3 produced no transcript: {}", truncate_for_error(&stderr))
-        });
-    }
-
-    Ok(cleaned)
-}
-
-
-
-fn parse_parakeet_output(stdout: &str) -> String {
-    let mut parts = Vec::new();
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if should_ignore_parakeet_line(trimmed) {
-            continue;
-        }
-
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            let mut values = Vec::new();
-            collect_transcript_text(&json, &mut values);
-            for value in values {
-                let normalized = normalize_transcript_text(&value);
-                if !normalized.is_empty() {
-                    parts.push(normalized);
-                }
-            }
-            continue;
-        }
-
-        let normalized = normalize_transcript_text(strip_parakeet_prefix(trimmed));
-        if !normalized.is_empty() {
-            parts.push(normalized);
-        }
-    }
-
-    normalize_transcript_text(&parts.join(" "))
-}
-
-fn should_ignore_parakeet_line(line: &str) -> bool {
-    if line.is_empty() {
-        return true;
-    }
-    let lower = line.to_ascii_lowercase();
-    lower.starts_with("started")
-        || lower.starts_with("creating")
-        || lower.starts_with("offline")
-        || lower.starts_with("loading")
-        || lower.starts_with("using")
-        || lower.starts_with("num threads")
-        || lower.contains("elapsed")
-        || lower.contains("-->")
-        || lower.contains("sherpa-onnx")
-        || lower.contains("onnxruntime")
-}
-
-fn collect_transcript_text(value: &serde_json::Value, out: &mut Vec<String>) {
-    match value {
-        serde_json::Value::Array(items) => {
-            for item in items {
-                collect_transcript_text(item, out);
-            }
-        }
-        serde_json::Value::Object(map) => {
-            for key in ["text", "transcript", "sentence", "result"] {
-                if let Some(text) = map.get(key).and_then(|v| v.as_str()) {
-                    out.push(text.to_string());
-                }
-            }
-            for key in ["segments", "results", "hypotheses", "items"] {
-                if let Some(child) = map.get(key) {
-                    collect_transcript_text(child, out);
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn strip_parakeet_prefix(line: &str) -> &str {
-    let mut value = line.trim();
-    if let Some((prefix, after_colon)) = value.rsplit_once(':') {
-        if prefix.ends_with(".wav") || prefix.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ' ') {
-            value = after_colon.trim();
-        }
-    }
-    if value.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-        value = value.split_once(' ').map(|(_, rest)| rest.trim()).unwrap_or(value);
-    }
-    value
+    Ok((text, source.to_string()))
 }
 
 fn normalize_transcript_text(text: &str) -> String {
@@ -870,25 +614,6 @@ fn normalize_technical_transcript(text: &str) -> String {
     }
 
     normalized
-}
-
-fn truncate_for_error(text: &str) -> String {
-    const MAX_CHARS: usize = 240;
-    let normalized = normalize_transcript_text(text);
-    if normalized.chars().count() <= MAX_CHARS {
-        return normalized;
-    }
-    let mut truncated = normalized.chars().take(MAX_CHARS).collect::<String>();
-    truncated.push_str("...");
-    truncated
-}
-
-fn which_in_path(bin: &str) -> bool {
-    std::env::var("PATH").ok().map_or(false, |path|
-        std::env::split_paths(&path).any(|dir|
-            dir.join(bin).exists() || dir.join(format!("{}.exe", bin)).exists()
-        )
-    )
 }
 
 fn format_microphone_error(prefix: &str, error: impl std::fmt::Display) -> String {
@@ -1022,34 +747,7 @@ pub fn start_level_emitter(app: tauri::AppHandle, is_recording: Arc<Mutex<bool>>
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_technical_transcript, parse_parakeet_output, trim_voice_activity};
-
-    #[test]
-    fn parakeet_parser_extracts_plain_text() {
-        let output = "Started!\n0 hello from parakeet\nElapsed seconds: 1.2";
-        assert_eq!(parse_parakeet_output(output), "hello from parakeet");
-    }
-
-    #[test]
-    fn parakeet_parser_extracts_json_text() {
-        let output = r#"{"lang":"en","text":"hello world","tokens":[1,2,3]}"#;
-        assert_eq!(parse_parakeet_output(output), "hello world");
-    }
-
-    #[test]
-    fn parakeet_parser_ignores_runtime_logs() {
-        let output = "Creating recognizer\nOfflineRecognizerConfig\nC:\\tmp\\rec.wav: ship clean code";
-        assert_eq!(parse_parakeet_output(output), "ship clean code");
-    }
-
-    #[test]
-    fn parakeet_parser_extracts_text_from_large_json_payload() {
-        let output = r#"{"text":"this is a longer dictation that should survive token heavy parakeet output","tokens":["▁this","▁is","▁a","▁longer"],"timestamps":[0.08,0.16,0.24],"log_probs":[-0.1,-0.2,-0.3],"segments":[{"start":0,"end":3,"tokens":[1,2,3,4]}]}"#;
-        assert_eq!(
-            parse_parakeet_output(output),
-            "this is a longer dictation that should survive token heavy parakeet output"
-        );
-    }
+    use super::{normalize_technical_transcript, trim_voice_activity};
 
     #[test]
     fn technical_normalizer_repairs_common_asr_terms() {

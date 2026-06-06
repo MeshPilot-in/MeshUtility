@@ -183,7 +183,7 @@ export function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 8, height: 8, borderRadius: '50%',
-            background: recordingState === 'listening' ? 'var(--accent)' : recordingState === 'processing' ? '#D1CFC0' : 'var(--text-muted)',
+            background: recordingState === 'listening' ? 'var(--primary)' : recordingState === 'processing' ? 'var(--primary)' : 'var(--text-muted)',
             ...(recordingState === 'listening' ? { animation: 'pulse-dot 0.8s ease infinite' } : {}),
           }} />
           <h1 style={{ fontFamily: "'Instrument Serif', serif", fontSize: 20, fontWeight: 400 }}>MeshVoice</h1>
