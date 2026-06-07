@@ -658,8 +658,8 @@ fn show_overlay_window(app: &AppHandle) -> Result<(), String> {
         .get_webview_window("overlay")
         .ok_or_else(|| "Overlay window is unavailable.".to_string())?;
 
-    let width = 500.0;
-    let height = 230.0;
+    let width = 480.0;
+    let height = 180.0;
     let _ = window.set_size(Size::Logical(LogicalSize::new(width, height)));
     let _ = window.set_shadow(false);
 
@@ -985,6 +985,21 @@ fn register_global_shortcut(app: &AppHandle) -> Result<(), String> {
             }
         })
         .map_err(|err| format!("Failed to register shortcut {shortcut}: {err}"))
+}
+
+#[tauri::command]
+fn unregister_global_shortcut(app: AppHandle) -> Result<(), String> {
+    let settings = read_settings(&app);
+    if let Ok(shortcut) = normalize_shortcut(&settings.shortcut).parse::<tauri_plugin_global_shortcut::Shortcut>() {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn reregister_global_shortcut(app: AppHandle) -> Result<(), String> {
+    let _ = register_global_shortcut(&app);
+    Ok(())
 }
 
 // ─── Auto-Updates (MeshPrompt) ───────────────────────────────────────────────
@@ -1354,7 +1369,7 @@ fn main() {
 
             // ── Consolidated System Tray ──
             {
-                let title_i = MenuItem::with_id(app, "title", "MeshUtility Suite v1.0.1", false, None::<&str>)?;
+                let title_i = MenuItem::with_id(app, "title", format!("MeshUtility Suite v{}", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
                 let open_voice = MenuItem::with_id(app, "open_voice", "Open Dictation Suite", true, None::<&str>)?;
                 let open_prompt = MenuItem::with_id(app, "open_prompt", "Open Prompt Enhancer", true, None::<&str>)?;
                 let open_overlay = MenuItem::with_id(app, "open_overlay", "Open Prompt Overlay", true, None::<&str>)?;
@@ -1472,7 +1487,9 @@ fn main() {
             set_paused,
             proxy_request,
             check_for_updates,
-            install_update
+            install_update,
+            unregister_global_shortcut,
+            reregister_global_shortcut
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
