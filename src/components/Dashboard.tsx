@@ -124,6 +124,15 @@ function MiniPlayer({ recordId, audioPath }: { recordId: number; audioPath: stri
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
+function formatSource(src: string): string {
+  if (!src) return 'Local'
+  const lower = src.toLowerCase()
+  if (lower === 'parakeet') return 'Nemotron 3.5'
+  if (lower === 'local') return 'Whisper'
+  if (lower === 'cloud') return 'Cloud'
+  return src
+}
+
 export function Dashboard() {
   const { stats, lastTranscription, engine, recordingState, setStats, setLastTranscription, setEngine } = useAppStore()
   const [history, setHistory] = useState<HistoryRecord[]>([])
@@ -288,7 +297,7 @@ export function Dashboard() {
                   <span style={{ fontSize: 11, color: 'var(--border)' }}>·</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDuration(record.duration_ms)}</span>
                   <span style={{ fontSize: 11, color: 'var(--border)' }}>·</span>
-                  <span style={{ fontSize: 11, color: record.source === 'cloud' ? 'var(--accent)' : 'var(--text-muted)' }}>{record.source}</span>
+                  <span style={{ fontSize: 11, color: record.source === 'cloud' ? 'var(--accent)' : 'var(--text-muted)' }}>{formatSource(record.source)}</span>
                 </div>
 
                 {/* Audio player */}

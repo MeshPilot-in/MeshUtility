@@ -217,7 +217,7 @@ fn send_copy_keystroke() -> Result<(), String> {
     let mut enigo = Enigo::new(&EnigoSettings::default())
         .map_err(|err| format!("Input automation unavailable: {err}"))?;
     enigo.key(Key::Control, Direction::Press).map_err(|err| err.to_string())?;
-    enigo.key(Key::Insert, Direction::Click).map_err(|err| err.to_string())?;
+    enigo.key(Key::Other(0x43), Direction::Click).map_err(|err| err.to_string())?; // virtual key code 0x43 = 'C'
     enigo.key(Key::Control, Direction::Release).map_err(|err| err.to_string())?;
     Ok(())
 }
@@ -246,9 +246,9 @@ fn send_copy_keystroke() -> Result<(), String> {
 fn send_paste_keystroke() -> Result<(), String> {
     let mut enigo = Enigo::new(&EnigoSettings::default())
         .map_err(|err| format!("Input automation unavailable: {err}"))?;
-    enigo.key(Key::Shift, Direction::Press).map_err(|err| err.to_string())?;
-    enigo.key(Key::Insert, Direction::Click).map_err(|err| err.to_string())?;
-    enigo.key(Key::Shift, Direction::Release).map_err(|err| err.to_string())?;
+    enigo.key(Key::Control, Direction::Press).map_err(|err| err.to_string())?;
+    enigo.key(Key::Other(0x56), Direction::Click).map_err(|err| err.to_string())?; // virtual key code 0x56 = 'V'
+    enigo.key(Key::Control, Direction::Release).map_err(|err| err.to_string())?;
     Ok(())
 }
 

@@ -65,7 +65,8 @@ Privacy/Security Notes
 Acceptance Criteria
 QA Checklist`;
       
-      const mode = context.settings?.enhancePromptMode || "auto";
+      const settingsObj = context.settings as { enhancePromptMode?: string } | undefined;
+      const mode = settingsObj?.enhancePromptMode || "auto";
       let prompt = basePrompt;
       if (mode === "concise") {
         prompt += "\n\nCRITICAL OVERRIDE: The user has requested CONCISE mode. Force a shorter concise output style regardless of task complexity.";
@@ -88,96 +89,27 @@ Absolutely no extra headers, commentary, explanation, or conversational framing 
     options: { temperature: 0.3, maxOutputTokens: 2600 },
   }),
   createTextAction({
-    id: "make-concise",
-    label: "Make Concise",
-    description: "Shorten text while preserving meaning.",
+    id: "polish",
+    label: "Polish",
+    description: "Fix grammar, clarity, and tone while keeping your meaning and format.",
     category: "edit",
-    systemPrompt:
-      "You are MeshPrompt. Make text shorter without losing important meaning, names, numbers, constraints, or tone.",
-    instruction: "Condense the selected text. Remove repetition and filler. Keep the output direct and complete.",
-    options: { temperature: 0.2, maxOutputTokens: 1000 },
-  }),
-  createTextAction({
-    id: "expand-details",
-    label: "Expand Details",
-    description: "Add clarity, context, and completeness.",
-    category: "write",
-    systemPrompt:
-      "You are MeshPrompt. Expand concise notes into clear instructions without adding unsupported facts. Mark assumptions explicitly when needed.",
-    instruction: "Expand the selected text with useful structure, missing context, edge cases, and clear next steps.",
-    options: { temperature: 0.45, maxOutputTokens: 2600 },
-  }),
-  createTextAction({
-    id: "rewrite-professionally",
-    label: "Rewrite Professionally",
-    description: "Make text polished and business-ready.",
-    category: "edit",
-    systemPrompt:
-      "You are MeshPrompt. Rewrite text in a professional, calm, precise voice. Preserve the sender's intent and factual content.",
-    instruction: "Rewrite the selected text professionally. Keep it concise, respectful, and ready to send.",
-  }),
-  createTextAction({
-    id: "developer-prompt",
-    label: "Developer Prompt",
-    description: "Convert text into a technical prompt for coding agents.",
-    category: "transform",
-    systemPrompt:
-      "You are MeshPrompt. Convert rough engineering requests into precise coding-agent prompts with scope, files, constraints, implementation order, tests, and acceptance criteria.",
-    instruction:
-      "Turn the selected text into a coding-agent prompt. Include what to inspect first, what to change, what not to break, and how to verify.",
-    options: { temperature: 0.25, maxOutputTokens: 2800 },
-  }),
-  createTextAction({
-    id: "product-prompt",
-    label: "Product Prompt",
-    description: "Convert text into a product or feature-building prompt.",
-    category: "transform",
-    systemPrompt:
-      "You are MeshPrompt. Convert feature ideas into product-ready implementation prompts with user value, UX requirements, states, edge cases, and acceptance criteria.",
-    instruction:
-      "Turn the selected text into a product feature prompt suitable for a designer or product-focused engineering agent.",
-    options: { temperature: 0.35, maxOutputTokens: 2600 },
-  }),
-  createTextAction({
-    id: "bug-report",
-    label: "Bug Report",
-    description: "Turn rough notes into a clear bug report.",
-    category: "analyze",
-    systemPrompt:
-      "You are MeshPrompt. Convert rough bug notes into actionable bug reports. Separate observed behavior from guesses and include reproduction steps when implied.",
-    instruction:
-      "Create a concise bug report with title, environment, observed behavior, expected behavior, reproduction steps, suspected cause, and acceptance criteria.",
+    systemPrompt: `You are MeshPrompt Polish, a precise writing editor.
+
+Your job is to polish the user's text so it reads clean, clear, and professional — WITHOUT changing what it says.
+
+Rules:
+- Fix grammar, spelling, punctuation, and awkward phrasing.
+- Improve clarity and flow; tighten wordy or clumsy sentences.
+- Preserve the original meaning, intent, facts, names, numbers, and any code or URLs exactly.
+- Preserve the original language and roughly the original length — do NOT summarize or expand.
+- Keep the author's voice and tone; make it polished, not robotic.
+- Preserve existing structure and formatting (lists, line breaks, markdown, code blocks).
+- Do not add new content, opinions, greetings, or sign-offs that were not implied.
+
+CRITICAL OUTPUT FORMAT:
+Output ONLY the polished text itself. No preamble, no "Here is", no quotes around it, no notes or explanations of what you changed. Start directly with the polished text and stop when it is complete.`,
+    instruction: "Polish the selected text.",
     options: { temperature: 0.2, maxOutputTokens: 2200 },
-  }),
-  createTextAction({
-    id: "email-rewrite",
-    label: "Email Rewrite",
-    description: "Turn rough text into a professional email.",
-    category: "write",
-    systemPrompt:
-      "You are MeshPrompt. Rewrite text as a professional email. Keep the user's intent, make the ask clear, and avoid excessive formality.",
-    instruction: "Convert the selected text into a clean email with subject and body.",
-    options: { temperature: 0.35, maxOutputTokens: 1800 },
-  }),
-  createTextAction({
-    id: "summarize",
-    label: "Summarize",
-    description: "Create a short summary.",
-    category: "analyze",
-    systemPrompt: "You are MeshPrompt. Summarize accurately without adding unsupported claims.",
-    instruction: "Summarize the selected text into high-signal bullets and include the key decision or ask if present.",
-    options: { temperature: 0.15, maxOutputTokens: 1000 },
-  }),
-  createTextAction({
-    id: "custom-instruction",
-    label: "Custom Instruction",
-    description: "Apply a reusable custom transformation instruction.",
-    category: "custom",
-    systemPrompt:
-      "You are MeshPrompt. Apply the user's custom transformation instruction exactly. Preserve factual content unless the instruction explicitly asks otherwise.",
-    instruction:
-      "Apply the user instruction to the selected text. If no instruction is supplied, improve clarity and structure while preserving meaning.",
-    options: { temperature: 0.4, maxOutputTokens: 2200 },
   }),
 ] as const satisfies readonly MeshPromptActionDefinition[];
 

@@ -36,7 +36,27 @@ export function UpdateWidget() {
   }
 
   useEffect(() => {
-    checkForUpdates()
+    let active = true
+    invoke<UpdateCheckResult>('check_for_updates')
+      .then((result) => {
+        if (!active) return
+        if (result.updateAvailable) {
+          setUpdateInfo(result)
+          setStatus('available')
+        } else {
+          setStatus('idle')
+        }
+      })
+      .catch((err) => {
+        if (!active) return
+        console.error('Update check failed:', err)
+        setErrorMsg(typeof err === 'string' ? err : String(err))
+        setStatus('error')
+      })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleUpdate = async (e: React.MouseEvent) => {

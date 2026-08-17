@@ -196,7 +196,7 @@ export interface MeshPromptActionExecutionContext {
   readonly documentText?: string;
   readonly userInstruction?: string;
   readonly variables?: Record<string, string>;
-  readonly settings?: any; // or pass specific settings
+  readonly settings?: unknown;
 }
 
 export interface MeshPromptActionBuildResult {

@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="MeshUtility - Open-source desktop utility for AI-powered voice dictation and prompt enhancement. Works offline and online.">
+  <title>MeshUtility — AI Voice Dictation & Prompt Enhancer</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Theme variables - Default (Dark / Cyberpunk Violet) */
+    :root {
+      --bg-color: #0b0c10;
+      --bg-gradient: radial-gradient(circle at 50% 0%, #1a103c 0%, #0b0c10 70%);
+      --card-bg: rgba(20, 20, 30, 0.6);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f3f4f6;
+      --text-sub: #9ca3af;
+      --accent-color: #a855f7;
+      --accent-gradient: linear-gradient(135deg, #a855f7 0%, #3b82f6 100%);
+      --accent-glow: rgba(168, 85, 247, 0.35);
+      --accent-secondary: #3b82f6;
+      --font-display: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.5);
+      --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.7);
+      --glow-opacity: 0.15;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+    }
+
+    /* Nord Theme */
+    [data-theme="nord"] {
+      --bg-color: #2e3440;
+      --bg-gradient: radial-gradient(circle at 50% 0%, #3b4252 0%, #2e3440 80%);
+      --card-bg: rgba(46, 52, 64, 0.6);
+      --card-border: rgba(216, 222, 233, 0.1);
+      --text-main: #eceff4;
+      --text-sub: #d8dee9;
+      --accent-color: #88c0d0;
+      --accent-gradient: linear-gradient(135deg, #88c0d0 0%, #81a1c1 100%);
+      --accent-glow: rgba(136, 192, 208, 0.3);
+      --accent-secondary: #8fbcbb;
+    }
+
+    /* Tokyo Night Theme */
+    [data-theme="tokyo-night"] {
+      --bg-color: #1a1b26;
+      --bg-gradient: radial-gradient(circle at 50% 0%, #24283b 0%, #1a1b26 80%);
+      --card-bg: rgba(30, 32, 48, 0.6);
+      --card-border: rgba(122, 162, 247, 0.15);
+      --text-main: #c0caf5;
+      --text-sub: #a9b1d6;
+      --accent-color: #7aa2f7;
+      --accent-gradient: linear-gradient(135deg, #7aa2f7 0%, #bb9af3 100%);
+      --accent-glow: rgba(122, 162, 247, 0.3);
+      --accent-secondary: #2ac3de;
+    }
+
+    /* Gruvbox Theme */
+    [data-theme="gruvbox"] {
+      --bg-color: #282828;
+      --bg-gradient: radial-gradient(circle at 50% 0%, #3c3836 0%, #282828 80%);
+      --card-bg: rgba(40, 40, 40, 0.7);
+      --card-border: rgba(235, 219, 178, 0.1);
+      --text-main: #ebdbb2;
+      --text-sub: #a89984;
+      --accent-color: #fabd2f;
+      --accent-gradient: linear-gradient(135deg, #fabd2f 0%, #fe8019 100%);
+      --accent-glow: rgba(250, 189, 47, 0.25);
+      --accent-secondary: #b8bb26;
+    }
+
+    /* Reset & Base Styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      transition: background-color 0.4s ease, border-color 0.4s ease;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      background-image: var(--bg-gradient);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    /* Layout & Utilities */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+    }
+
+    .glass {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 28px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.95rem;
+      border-radius: 99px;
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, opacity 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary {
+      background: var(--accent-gradient);
+      color: #ffffff;
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 6px 24px var(--accent-glow);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 99px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent-color);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    /* Navigation */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      transition: background-color 0.3s ease, border-color 0.3s ease, backdrop-filter 0.3s ease;
+    }
+
+    header.scrolled {
+      background: rgba(11, 12, 16, 0.8);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .nav-wrapper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.35rem;
+      letter-spacing: 0.03em;
+    }
+
+    .logo img {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+    }
+
+    .logo-span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .nav-link {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text-sub);
+      transition: color 0.2s ease;
+    }
+
+    .nav-link:hover, .nav-link.active {
+      color: var(--text-main);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 160px 0 100px 0;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero-bg-glow {
+      position: absolute;
+      top: -100px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--accent-color) 0%, transparent 60%);
+      opacity: 0.12;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: 4rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero h1 span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-sub);
+      max-width: 700px;
+      margin: 0 auto 40px auto;
+      font-weight: 400;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-ctas {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 60px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Interactive UI Showcase Mockup */
+    .mockup-container {
+      position: relative;
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+      z-index: 2;
+      perspective: 1000px;
+    }
+
+    .app-mockup {
+      width: 100%;
+      transform: rotateX(5deg);
+      box-shadow: var(--shadow-lg), 0 0 40px rgba(168, 85, 247, 0.1);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      transition: transform 0.5s ease;
+    }
+
+    .app-mockup:hover {
+      transform: rotateX(0deg) translateY(-5px);
+    }
+
+    .mockup-header {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .mockup-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .mockup-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .mockup-title {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-sub);
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .mockup-body {
+      padding: 32px;
+      background: rgba(10, 10, 15, 0.4);
+      min-height: 400px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+
+    /* Interactive Playgrounds */
+    .demo-pane {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .demo-label {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .demo-label span {
+      font-size: 0.75rem;
+      padding: 2px 6px;
+      background: rgba(168, 85, 247, 0.15);
+      color: var(--accent-color);
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .demo-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 20px;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 250px;
+    }
+
+    .playground-textarea {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: var(--text-main);
+      padding: 12px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      resize: none;
+      height: 120px;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .playground-textarea:focus {
+      border-color: var(--accent-color);
+    }
+
+    .action-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+    }
+
+    /* Dictation Demo Specifics */
+    .dictation-waves {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      height: 40px;
+      opacity: 0.3;
+    }
+
+    .dictation-waves.active {
+      opacity: 1;
+    }
+
+    .wave-bar {
+      width: 4px;
+      height: 10px;
+      background: var(--accent-color);
+      border-radius: 99px;
+    }
+
+    .dictation-waves.active .wave-bar {
+      animation: soundwave 1s ease-in-out infinite alternate;
+    }
+
+    .dictation-waves.active .wave-bar:nth-child(2) { animation-delay: 0.15s; }
+    .dictation-waves.active .wave-bar:nth-child(3) { animation-delay: 0.3s; }
+    .dictation-waves.active .wave-bar:nth-child(4) { animation-delay: 0.45s; }
+    .dictation-waves.active .wave-bar:nth-child(5) { animation-delay: 0.6s; }
+
+    @keyframes soundwave {
+      0% { height: 10px; }
+      100% { height: 35px; }
+    }
+
+    .mic-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--accent-gradient);
+      border: none;
+      color: white;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px var(--accent-glow);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .mic-btn.recording {
+      animation: pulse-mic 1.5s infinite;
+    }
+
+    @keyframes pulse-mic {
+      0% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(168, 85, 247, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
+    }
+
+    /* Enhancer Demo Specifics */
+    .selector-pills {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .pill {
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 99px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-sub);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+
+    .pill.active {
+      background: var(--accent-color);
+      border-color: var(--accent-color);
+      color: white;
+    }
+
+    .output-stream {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.9rem;
+      min-height: 80px;
+      color: var(--text-main);
+      position: relative;
+    }
+
+    /* Features Grid */
+    .features {
+      padding: 100px 0;
+      position: relative;
+    }
+
+    .section-header {
+      text-align: center;
+      max-width: 600px;
+      margin: 0 auto 60px auto;
+    }
+
+    .section-header h2 {
+      font-family: var(--font-display);
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+
+    .section-header p {
+      color: var(--text-sub);
+      font-size: 1.1rem;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 30px;
+    }
+
+    .feature-card {
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      cursor: default;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      box-shadow: var(--shadow-lg);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(168, 85, 247, 0.1);
+      color: var(--accent-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 600;
+      border: 1px solid rgba(168, 85, 247, 0.2);
+    }
+
+    .feature-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    .feature-card p {
+      color: var(--text-sub);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    /* Dynamic Theme Switcher Section */
+    .theme-previewer {
+      padding: 80px 0;
+      text-align: center;
+      position: relative;
+    }
+
+    .theme-selector-grid {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 30px;
+    }
+
+    .theme-btn {
+      padding: 12px 24px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      font-family: var(--font-display);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .theme-btn:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .theme-btn.active {
+      background: var(--text-main);
+      color: var(--bg-color);
+      border-color: var(--text-main);
+    }
+
+    .theme-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    /* CTA Section */
+    .cta-banner {
+      margin: 80px 0;
+      padding: 60px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-banner-glow {
+      position: absolute;
+      top: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, var(--accent-color) 0%, transparent 70%);
+      opacity: 0.2;
+      filter: blur(50px);
+      pointer-events: none;
+    }
+
+    .cta-banner h2 {
+      font-family: var(--font-display);
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+
+    .cta-banner p {
+      color: var(--text-sub);
+      font-size: 1.15rem;
+      max-width: 600px;
+      margin: 0 auto 32px auto;
+    }
+
+    /* Footer */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      color: var(--text-sub);
+      font-size: 0.9rem;
+    }
+
+    .footer-wrapper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    /* Responsiveness */
+    @media (max-width: 900px) {
+      .hero h1 {
+        font-size: 2.8rem;
+      }
+      .mockup-body {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+      .footer-wrapper {
+        flex-direction: column;
+        gap: 20px;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <header id="header">
+    <div class="container nav-wrapper">
+      <a href="#" class="logo">
+        <img src="public/logo-prompt.png" alt="MeshUtility Logo" onerror="this.src='https://raw.githubusercontent.com/lazyshrey/MeshUtility/main/.github/assets/logo.png'">
+        <span>Mesh<span class="logo-span">Utility</span></span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#demo" class="nav-link">Interactive Playground</a>
+        <a href="https://github.com/lazyshrey/MeshUtility" class="nav-link" target="_blank">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-bg-glow"></div>
+    <div class="container">
+      <div class="badge">Version 1.0.10 Released</div>
+      <h1>Speak, Refine, Create.<br>Fully <span>Local & Private</span>.</h1>
+      <p>MeshUtility is a resident system tray desktop application combining lightning-fast offline Voice Dictation and intelligent Prompt Enhancement. Streamline your workflow with absolute data privacy.</p>
+      
+      <div class="hero-ctas">
+        <a href="https://github.com/lazyshrey/MeshUtility/releases" class="btn btn-primary" target="_blank">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Download for Windows
+        </a>
+        <a href="#demo" class="btn btn-secondary">Try Live Demo</a>
+      </div>
+
+      <!-- Interactive Mockup Showcase -->
+      <div class="mockup-container" id="demo">
+        <div class="app-mockup glass">
+          <div class="mockup-header">
+            <div class="mockup-dots">
+              <div class="mockup-dot" style="background: #ef4444;"></div>
+              <div class="mockup-dot" style="background: #eab308;"></div>
+              <div class="mockup-dot" style="background: #22c55e;"></div>
+            </div>
+            <div class="mockup-title">MeshUtility Interactive Sandbox</div>
+          </div>
+          <div class="mockup-body">
+            
+            <!-- Voice Dictation Playground -->
+            <div class="demo-pane">
+              <div class="demo-label">
+                Voice Dictation
+                <span id="dictation-status">Idle</span>
+              </div>
+              <div class="demo-card">
+                <textarea class="playground-textarea" id="dictation-output" readonly placeholder="Click the mic button and speak to simulate transcription..."></textarea>
+                
+                <div class="action-row">
+                  <div class="dictation-waves" id="waves">
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                  </div>
+                  <button class="mic-btn" id="mic-btn" aria-label="Toggle recording">
+                    🎤
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Prompt Enhancer Playground -->
+            <div class="demo-pane">
+              <div class="demo-label">
+                Prompt Enhancer
+                <span>Streaming AI</span>
+              </div>
+              <div class="demo-card">
+                <div class="selector-pills">
+                  <span class="pill active" onclick="setEnhanceAction('enhance', this)">Enhance</span>
+                  <span class="pill" onclick="setEnhanceAction('concise', this)">Make Concise</span>
+                  <span class="pill" onclick="setEnhanceAction('grammar', this)">Fix Grammar</span>
+                  <span class="pill" onclick="setEnhanceAction('translate', this)">Translate</span>
+                </div>
+                
+                <textarea class="playground-textarea" id="enhancer-input" placeholder="Type a prompt to rewrite... e.g. 'write an email asking for a raise'"></textarea>
+                
+                <div class="output-stream" id="enhancer-output">
+                  Enhanced prompt will stream here...
+                </div>
+                
+                <div class="action-row" style="margin-top: 12px; justify-content: flex-end;">
+                  <button class="btn btn-primary" style="padding: 8px 20px; font-size: 0.85rem;" onclick="triggerEnhance()">
+                    Enhance Prompt
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Features Grid Section -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2>Supercharge Your AI Workflow</h2>
+        <p>Built for developers, researchers, and creators who value speed, configuration, and privacy.</p>
+      </div>
+
+      <div class="features-grid">
+        <!-- Feature 1 -->
+        <div class="feature-card glass">
+          <div class="feature-icon">🎙️</div>
+          <h3>Offline Voice Dictation</h3>
+          <p>Hold your hotkey, speak, and release. Local Whisper models transcribe your words instantly and inject them into any active text field across any Windows application.</p>
+        </div>
+        <!-- Feature 2 -->
+        <div class="feature-card glass">
+          <div class="feature-icon">✨</div>
+          <h3>Prompt Enhancer</h3>
+          <p>Select text anywhere, trigger the global shortcut, and watch our floating overlay stream optimized, rewritten prompts ready to copy or replace inline.</p>
+        </div>
+        <!-- Feature 3 -->
+        <div class="feature-card glass">
+          <div class="feature-icon">🔒</div>
+          <h3>100% Local Privacy</h3>
+          <p>Optionally run fully offline. All configurations, prompt histories, and custom pronunciation dictionaries are kept in a local SQLite database on your device.</p>
+        </div>
+        <!-- Feature 4 -->
+        <div class="feature-card glass">
+          <div class="feature-icon">⚙️</div>
+          <h3>Multi-Provider Support</h3>
+          <p>Connect seamlessly to Groq, OpenAI, Anthropic, Google Gemini, Mistral, or any custom local/remote OpenAI-compatible API endpoint.</p>
+        </div>
+        <!-- Feature 5 -->
+        <div class="feature-card glass">
+          <div class="feature-icon">📥</div>
+          <h3>System Tray Resident</h3>
+          <p>Minimal footprint. Lives quietly in your system tray, consuming near-zero resources, ready to trigger instantly with global Windows hotkeys.</p>
+        </div>
+        <!-- Feature 6 -->
+        <div class="feature-card glass">
+          <div class="feature-icon">📚</div>
+          <h3>Pronunciation Dictionary</h3>
+          <p>Define custom mappings for complex terms, brand names, or specialized acronyms to train the transcription engine to match your voice precisely.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Theme Selector / Customization Section -->
+  <section class="theme-previewer">
+    <div class="container">
+      <div class="section-header">
+        <h2>Tailored To Your Workspace</h2>
+        <p>MeshUtility features a custom UI engine supporting beautiful dark and light themes out of the box.</p>
+      </div>
+
+      <div class="theme-selector-grid">
+        <button class="theme-btn active" onclick="changeTheme('default', this)">
+          <span class="theme-dot" style="background: #a855f7;"></span> Default Dark
+        </button>
+        <button class="theme-btn" onclick="changeTheme('nord', this)">
+          <span class="theme-dot" style="background: #88c0d0;"></span> Nord Theme
+        </button>
+        <button class="theme-btn" onclick="changeTheme('tokyo-night', this)">
+          <span class="theme-dot" style="background: #7aa2f7;"></span> Tokyo Night
+        </button>
+        <button class="theme-btn" onclick="changeTheme('gruvbox', this)">
+          <span class="theme-dot" style="background: #fabd2f;"></span> Gruvbox Retro
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Banner -->
+  <section class="container">
+    <div class="cta-banner glass">
+      <div class="cta-banner-glow"></div>
+      <h2>Get MeshUtility Today</h2>
+      <p>Transform your productivity with local speech-to-text and AI prompt optimization. Open-source, fast, and completely customizable.</p>
+      <div style="display: flex; gap: 16px; justify-content: center;">
+        <a href="https://github.com/lazyshrey/MeshUtility/releases" class="btn btn-primary" target="_blank">Download Installer</a>
+        <a href="https://github.com/lazyshrey/MeshUtility" class="btn btn-secondary" target="_blank">Explore Source Code</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container footer-wrapper">
+      <p>&copy; 2026 MeshUtility. Open source under the Apache-2.0 License.</p>
+      <div class="footer-links">
+        <a href="https://github.com/lazyshrey/MeshUtility" target="_blank">GitHub</a>
+        <a href="https://github.com/lazyshrey/MeshUtility/releases" target="_blank">Releases</a>
+        <a href="https://github.com/lazyshrey/MeshUtility/blob/main/LICENSE" target="_blank">License</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Header Scroll Effect
+    const header = document.getElementById('header');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 50) {
+        header.classList.add('scrolled');
+      } else {
+        header.classList.remove('scrolled');
+      }
+    });
+
+    // Theme Switcher Logic
+    function changeTheme(themeName, btnElement) {
+      if (themeName === 'default') {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', themeName);
+      }
+      
+      // Update active state in theme buttons
+      document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      btnElement.classList.add('active');
+    }
+
+    // Voice Dictation Interactive Sandbox
+    const micBtn = document.getElementById('mic-btn');
+    const waves = document.getElementById('waves');
+    const dictationOutput = document.getElementById('dictation-output');
+    const dictationStatus = document.getElementById('dictation-status');
+    let isRecording = false;
+
+    const phrases = [
+      "Hello, this is a live demonstration of MeshUtility voice dictation running completely locally on my machine...",
+      "MeshUtility uses state of the art offline models to transcribe speech instantly without sending any data to third party servers.",
+      "Just hold the global Alt+Space hotkey to talk, let go, and see your words typed directly into any active editor automatically."
+    ];
+
+    micBtn.addEventListener('click', () => {
+      if (!isRecording) {
+        // Start recording
+        isRecording = true;
+        micBtn.classList.add('recording');
+        waves.classList.add('active');
+        dictationStatus.textContent = "Listening...";
+        dictationOutput.value = "";
+        
+        let phrase = phrases[Math.floor(Math.random() * phrases.length)];
+        let words = phrase.split(' ');
+        let currentIndex = 0;
+        
+        // Simulate real-time streaming speech translation
+        const interval = setInterval(() => {
+          if (!isRecording) {
+            clearInterval(interval);
+            return;
+          }
+          if (currentIndex < words.length) {
+            dictationOutput.value += (currentIndex === 0 ? '' : ' ') + words[currentIndex];
+            dictationOutput.scrollTop = dictationOutput.scrollHeight;
+            currentIndex++;
+          } else {
+            // Finished
+            clearInterval(interval);
+            stopRecording();
+          }
+        }, 150 + Math.random() * 100);
+        
+        // Save interval reference on btn
+        micBtn.dataset.intervalId = interval;
+      } else {
+        stopRecording();
+      }
+    });
+
+    function stopRecording() {
+      isRecording = false;
+      micBtn.classList.remove('recording');
+      waves.classList.remove('active');
+      dictationStatus.textContent = "Idle";
+      if (micBtn.dataset.intervalId) {
+        clearInterval(parseInt(micBtn.dataset.intervalId));
+      }
+    }
+
+    // Prompt Enhancer Sandbox
+    let selectedEnhanceAction = 'enhance';
+    
+    function setEnhanceAction(action, element) {
+      selectedEnhanceAction = action;
+      document.querySelectorAll('.selector-pills .pill').forEach(pill => {
+        pill.classList.remove('active');
+      });
+      element.classList.add('active');
+    }
+
+    const responses = {
+      enhance: {
+        default: "Write a professional email negotiating a salary raise, focusing on key contributions, market rate comparison, and value added to the team.",
+        custom: (input) => `Act as an expert prompt engineer. Refine the user request: "${input}" to be clearer, structural, and set instructions for tone, constraints, and target output style.`
+      },
+      concise: {
+        default: "Summarize this request in a direct, command-driven structure to maximize efficiency for LLM reasoning.",
+        custom: (input) => `Rewrite concisely: "${input}". Remove fluff and specify clear output requirements.`
+      },
+      grammar: {
+        default: "Correct all spelling, punctuation, syntax, and sentence structure issues while maintaining the original tone.",
+        custom: (input) => `Proofread and correct grammatical errors in: "${input}".`
+      },
+      translate: {
+        default: "Translate this instruction into clean, precise technical Spanish, preserving formatting.",
+        custom: (input) => `Translate to Spanish: "${input}".`
+      }
+    };
+
+    function triggerEnhance() {
+      const inputVal = document.getElementById('enhancer-input').value.trim();
+      const outputDiv = document.getElementById('enhancer-output');
+      
+      outputDiv.innerHTML = "";
+      
+      let baseText = "";
+      if (!inputVal) {
+        baseText = responses[selectedEnhanceAction].default;
+      } else {
+        baseText = responses[selectedEnhanceAction].custom(inputVal);
+      }
+      
+      let index = 0;
+      // Stream output letters/words
+      const interval = setInterval(() => {
+        if (index < baseText.length) {
+          outputDiv.innerHTML += baseText[index];
+          index++;
+        } else {
+          clearInterval(interval);
+        }
+      }, 15);
+    }
+  </script>
+</body>
+</html>

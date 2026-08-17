@@ -24,7 +24,6 @@ export default defineConfig({
       input: {
         main:   resolve(__dirname, 'index.html'),
         widget: resolve(__dirname, 'widget.html'),
-        overlay: resolve(__dirname, 'overlay.html'),
       },
     },
   },

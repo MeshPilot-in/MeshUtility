@@ -17,6 +17,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 use transcribe_rs::{
     onnx::{
+        canary::{CanaryModel, CanaryParams},
         parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity},
         Quantization,
     },
@@ -32,6 +33,7 @@ const DEFAULT_IDLE_UNLOAD_SECS: u64 = 300;
 enum LoadedEngine {
     Whisper(Box<FastWhisperEngine>),
     Parakeet(Box<ParakeetModel>),
+    Canary(Box<CanaryModel>),
 }
 
 /// A model held warm in memory.
@@ -79,7 +81,7 @@ fn display_name(model_path: &str) -> String {
 
 fn whisper_thread_count() -> i32 {
     std::thread::available_parallelism()
-        .map(|n| n.get().clamp(1, 4) as i32)
+        .map(|n| n.get().clamp(1, 8) as i32)
         .unwrap_or(4)
 }
 
@@ -225,10 +227,21 @@ impl VoiceEngine {
         self.last_activity.store(now_secs(), Ordering::Relaxed);
     }
 
-    /// Directories are Parakeet (transcribe-rs ONNX bundle); `.bin` files are
-    /// whisper.cpp ggml models.
-    fn is_parakeet(path: &Path) -> bool {
+    /// Directories are ONNX bundles (transcribe-rs). `.bin` files are
+    /// whisper.cpp ggml models. Within ONNX bundles we distinguish Canary
+    /// (encoder-decoder) from Parakeet (transducer) by the decoder filename:
+    /// Canary ships `decoder-model*.onnx`, Parakeet ships
+    /// `decoder_joint-model*.onnx`.
+    fn is_onnx_bundle(path: &Path) -> bool {
         path.is_dir()
+    }
+
+    /// True when the ONNX bundle directory looks like a Canary model.
+    fn is_canary_bundle(path: &Path) -> bool {
+        path.is_dir()
+            && (path.join("decoder-model.int8.onnx").exists()
+                || path.join("decoder-model.onnx").exists())
+            && !path.join("decoder_joint-model.int8.onnx").exists()
     }
 
     /// Insert a model in the cache, replacing any different resident model.
@@ -309,10 +322,16 @@ impl VoiceEngine {
 
         let _ = self.app.emit("model-loading", &name);
         let started = std::time::Instant::now();
-        let loaded = if Self::is_parakeet(&path) {
-            ParakeetModel::load(&path, &Quantization::Int8)
-                .map(|m| LoadedEngine::Parakeet(Box::new(m)))
-                .map_err(|e| format!("Failed to load Parakeet model: {e}"))
+        let loaded = if Self::is_onnx_bundle(&path) {
+            if Self::is_canary_bundle(&path) {
+                CanaryModel::load(&path, &Quantization::Int8)
+                    .map(|m| LoadedEngine::Canary(Box::new(m)))
+                    .map_err(|e| format!("Failed to load Canary model: {e}"))
+            } else {
+                ParakeetModel::load(&path, &Quantization::Int8)
+                    .map(|m| LoadedEngine::Parakeet(Box::new(m)))
+                    .map_err(|e| format!("Failed to load Parakeet model: {e}"))
+            }
         } else {
             FastWhisperEngine::load(&path)
                 .map(|m| LoadedEngine::Whisper(Box::new(m)))
@@ -402,6 +421,23 @@ impl VoiceEngine {
                         .transcribe_with(&samples, &params)
                         .map(|r| r.text)
                         .map_err(|e| format!("Parakeet transcription failed: {e}"))
+                }
+                LoadedEngine::Canary(engine) => {
+                    // Canary is multilingual (Flash: en/de/es/fr). Map the app's
+                    // "auto"/"" flag to English as a safe default; pass through
+                    // any explicit ISO code the user selected.
+                    let lang = match language {
+                        "auto" | "" => "en".to_string(),
+                        other => other.to_string(),
+                    };
+                    let params = CanaryParams {
+                        language: Some(lang),
+                        ..Default::default()
+                    };
+                    engine
+                        .transcribe_with(&samples, &params)
+                        .map(|r| r.text)
+                        .map_err(|e| format!("Canary transcription failed: {e}"))
                 }
             }
         }));

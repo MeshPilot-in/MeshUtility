@@ -1,6 +1,7 @@
 # Logs
 logs
 *.log
+*.err.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -14,7 +15,7 @@ dist-ssr
 # Environment files — never commit secrets
 *.local
 *.env
-.env.*
+*.env.*
 !.env.example
 
 # Editor directories
@@ -43,13 +44,32 @@ src-tauri/whisper-extracted/
 !src-tauri/bin/sherpa/*.exe
 !src-tauri/bin/sherpa/*.dll
 
-# MeshSwarm MCP configs (contain API key)
-opencode.json
-.mcp.json
-.gemini/settings.json
-.cursor/mcp.json
-.agents/mcp_config.json
+# Backups and local dumps (contain secrets and local paths)
+*backup*.json
+*.backup.json
+
+# Local scripts & tools
+*.local.ps1
+*.local.sh
 meshmcp.local.ps1
-# Local agent/tooling state (not part of the project)
+
+# Local agent/tooling state & rules
 .commandcode/
 .meshmemory/
+MESH_CHART/
+.agents/
+.cursor/
+.gemini/
+.qwen/
+.factory/
+.kiro/
+.grok/
+.claude/
+AGENTS.md
+CLAUDE.md
+
+# MeshSwarm / MeshCrew MCP configs (contain API keys)
+opencode.json
+.mcp.json
+crush.json
+.mimo-code.json

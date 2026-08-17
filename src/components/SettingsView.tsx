@@ -1,7 +1,8 @@
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Settings, Keyboard, Shield } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { Toggle, type SettingsState, fallbackSettings } from "./PromptCommon";
+import { Toggle } from "./PromptCommon";
+import { type SettingsState, fallbackSettings } from "./promptService";
 
 function HotkeyRecorder({ value, onChange, settings }: { value: string; onChange: (v: string) => void; settings: SettingsState }) {
   const [capturing, setCapturing] = useState(false);

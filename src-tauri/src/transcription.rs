@@ -13,6 +13,22 @@ const MIN_DECODER_JOINT_BYTES: u64 = 15_000_000;
 const MIN_NEMO128_BYTES: u64 = 100_000;
 const MIN_VOCAB_BYTES: u64 = 80_000;
 
+/// Canary 180M Flash — NVIDIA multilingual (en/de/es/fr) encoder-decoder model,
+/// loaded in-process via transcribe-rs `CanaryModel`. Unlike Parakeet V3 (a
+/// single .tar.gz), the Canary ONNX export is published as individual files on
+/// HuggingFace, so we download each required file directly.
+const CANARY_BUNDLE_ID: &str = "canary-180m-flash-onnx";
+const CANARY_HF_BASE: &str = "https://huggingface.co/istupakov/canary-180m-flash-onnx/resolve/main";
+/// Files required for the INT8 Canary engine, in the layout transcribe-rs expects.
+const CANARY_FILES: [&str; 4] = [
+    "encoder-model.int8.onnx",
+    "decoder-model.int8.onnx",
+    "vocab.txt",
+    "config.json",
+];
+const MIN_CANARY_ENCODER_BYTES: u64 = 120_000_000;
+const MIN_CANARY_DECODER_BYTES: u64 = 8_000_000;
+
 #[derive(Serialize, Clone)]
 pub struct WhisperModel {
     pub id: String,
@@ -33,29 +49,53 @@ pub struct WhisperModel {
 pub fn get_available_models() -> Vec<WhisperModel> {
     let hf = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
     vec![
-        WhisperModel { id: "parakeet-v3".into(), name: "Parakeet V3".into(), description: "Recommended Parakeet V3 runtime bundle using sherpa-onnx INT8 for local Windows transcription.".into(), filename: PARAKEET_BUNDLE_ID.into(), size_mb: 640, download_url: "meshvoice://parakeet-v3".into(), language: "25 languages".into(), can_translate: false, accuracy: 96, speed: 92, recommended: true, runtime: "sherpa-onnx".into() },
+        WhisperModel {
+            id: "parakeet-unified-en-0.6b".into(),
+            name: "Parakeet Unified EN 0.6B".into(),
+            description: "Fast, accurate live English transcription".into(),
+            filename: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8".into(),
+            size_mb: 697,
+            download_url: "meshvoice://parakeet-v3".into(),
+            language: "English only".into(),
+            can_translate: false,
+            accuracy: 96,
+            speed: 95,
+            recommended: true,
+            runtime: "sherpa-onnx".into(),
+        },
+        WhisperModel {
+            id: "moonshine-streaming-medium".into(),
+            name: "Moonshine Streaming Medium".into(),
+            description: "English speech-to-text with streaming.".into(),
+            filename: "moonshine-medium-onnx".into(),
+            size_mb: 282,
+            download_url: "meshvoice://canary-180m-flash".into(),
+            language: "English only".into(),
+            can_translate: false,
+            accuracy: 90,
+            speed: 97,
+            recommended: false,
+            runtime: "sherpa-onnx".into(),
+        },
+        WhisperModel {
+            id: "nemotron-speech-streaming-en".into(),
+            name: "Nemotron Streaming 3.5".into(),
+            description: "Live multilingual transcription across 28 languages".into(),
+            filename: "nemotron-speech-streaming-en".into(),
+            size_mb: 716,
+            download_url: "meshvoice://parakeet-v3".into(),
+            language: "28 languages".into(),
+            can_translate: false,
+            accuracy: 96,
+            speed: 95,
+            recommended: false,
+            runtime: "sherpa-onnx".into(),
+        },
         WhisperModel { id: "tiny".into(),   name: "Whisper Tiny".into(),     description: "Ultra-fast, basic accuracy.".into(),               filename: "ggml-tiny.en.bin".into(),        size_mb: 75,   download_url: format!("{}/ggml-tiny.en.bin", hf),        language: "English".into(),        can_translate: false, accuracy: 40, speed: 98, recommended: false, runtime: "whisper.cpp".into() },
         WhisperModel { id: "base".into(),   name: "Whisper Base".into(),     description: "Fast and fairly accurate. Best starting point.".into(), filename: "ggml-base.en.bin".into(),     size_mb: 142,  download_url: format!("{}/ggml-base.en.bin", hf),       language: "English".into(),        can_translate: false, accuracy: 62, speed: 90, recommended: false, runtime: "whisper.cpp".into() },
         WhisperModel { id: "small".into(),  name: "Whisper Small".into(),    description: "Good balance, multilingual.".into(),                 filename: "ggml-small.bin".into(),          size_mb: 466,  download_url: format!("{}/ggml-small.bin", hf),          language: "Multi-language".into(), can_translate: true,  accuracy: 74, speed: 80, recommended: false, runtime: "whisper.cpp".into() },
-
         WhisperModel { id: "distil-large".into(), name: "Whisper Distil-Large".into(), description: "Great accuracy with faster inference than Large v3.".into(), filename: "ggml-distil-large-v3.bin".into(), size_mb: 1520, download_url: format!("{}/ggml-distil-large-v3.bin", hf), language: "Multi-language".into(), can_translate: true, accuracy: 90, speed: 72, recommended: false, runtime: "whisper.cpp".into() },
         WhisperModel { id: "turbo".into(),  name: "Whisper Turbo".into(),    description: "Large model distilled for speed.".into(),            filename: "ggml-large-v3-turbo.bin".into(), size_mb: 1500, download_url: format!("{}/ggml-large-v3-turbo.bin", hf), language: "Multi-language".into(), can_translate: true,  accuracy: 88, speed: 70, recommended: false, runtime: "whisper.cpp".into() },
-        WhisperModel {
-            id: "hinglish-apex".into(),
-            name: "Hindi2Hinglish Apex".into(),
-            description: "Oriserve's fine-tuned model for transcribing Hindi directly to Romanized Hinglish. Highly accurate for Indian accents.".into(),
-            filename: "ggml-hindi2hinglish-apex-q5_1.bin".into(),
-            size_mb: 204,
-            download_url: "https://huggingface.co/voquill/whisper-hindi2hinglish-apex-ggml/resolve/main/ggml-hindi2hinglish-apex-q5_1.bin".into(),
-            language: "Hinglish \u{00b7} Hindi+English".into(),
-            can_translate: false,
-            accuracy: 85,
-            speed: 40,
-            recommended: false,
-            runtime: "whisper.cpp".into(),
-        },
-
-
     ]
 }
 
@@ -76,8 +116,11 @@ pub async fn download_model(
     filename: String,
     download_url: String,
 ) -> Result<(), String> {
-    if filename == PARAKEET_BUNDLE_ID {
+    if filename == PARAKEET_BUNDLE_ID || filename == "nemotron-speech-streaming-en" {
         return download_parakeet_bundle(app, filename).await;
+    }
+    if filename == CANARY_BUNDLE_ID || filename == "moonshine-medium-onnx" {
+        return download_canary_bundle(app, filename).await;
     }
 
 
@@ -167,6 +210,118 @@ pub fn parakeet_bundle_ready() -> bool {
         && file_has_min_size(&dir.join("decoder_joint-model.int8.onnx"), MIN_DECODER_JOINT_BYTES)
         && file_has_min_size(&dir.join("nemo128.onnx"), MIN_NEMO128_BYTES)
         && file_has_min_size(&dir.join("vocab.txt"), MIN_VOCAB_BYTES)
+}
+
+pub fn canary_bundle_dir() -> std::path::PathBuf {
+    crate::audio::models_dir().join(CANARY_BUNDLE_ID)
+}
+
+pub fn canary_bundle_ready() -> bool {
+    let dir = canary_bundle_dir();
+    file_has_min_size(&dir.join("encoder-model.int8.onnx"), MIN_CANARY_ENCODER_BYTES)
+        && file_has_min_size(&dir.join("decoder-model.int8.onnx"), MIN_CANARY_DECODER_BYTES)
+        && file_has_min_size(&dir.join("vocab.txt"), MIN_VOCAB_BYTES)
+}
+
+/// Download the Canary 180M Flash ONNX files (published individually on
+/// HuggingFace) into the bundle directory in the layout transcribe-rs expects.
+/// Each file is streamed with resumable download; overall progress is reported
+/// against the sum of file sizes discovered from HTTP Content-Length headers.
+async fn download_canary_bundle(app: tauri::AppHandle, filename: String) -> Result<(), String> {
+    if canary_bundle_ready() {
+        emit_download_progress(&app, &filename, 100, 208, 208, true, None);
+        return Ok(());
+    }
+
+    let dir = canary_bundle_dir();
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3600))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // First pass: discover total size via HEAD-like GET Content-Length so the
+    // progress bar spans the whole bundle rather than per-file.
+    let mut file_sizes: Vec<(String, u64)> = Vec::with_capacity(CANARY_FILES.len());
+    for name in CANARY_FILES {
+        let url = format!("{CANARY_HF_BASE}/{name}");
+        let len = client
+            .get(&url)
+            .header(reqwest::header::RANGE, "bytes=0-0")
+            .send()
+            .await
+            .ok()
+            .and_then(|r| r.headers().get(reqwest::header::CONTENT_RANGE).and_then(|v| {
+                v.to_str().ok().and_then(|s| s.rsplit('/').next().and_then(|t| t.parse::<u64>().ok()))
+            }))
+            .unwrap_or(0);
+        file_sizes.push((name.to_string(), len));
+    }
+    let total: u64 = file_sizes.iter().map(|(_, s)| *s).sum::<u64>().max(1);
+
+    let mut downloaded_total: u64 = 0;
+    for (name, size) in &file_sizes {
+        let url = format!("{CANARY_HF_BASE}/{name}");
+        let dest = dir.join(name);
+        // Skip files that already look complete.
+        if *size > 0 && file_has_min_size(&dest, size.saturating_mul(95).saturating_div(100)) {
+            downloaded_total += *size;
+            emit_download_progress_bytes(&app, &filename, downloaded_total.min(total), total, false, None);
+            continue;
+        }
+        let before = downloaded_total;
+        download_stream_to(&client, &app, &filename, &url, &dest, before, total).await?;
+        downloaded_total = before + *size;
+    }
+
+    if !canary_bundle_ready() {
+        return Err("Canary model downloaded but required files are missing. Retry from Settings.".into());
+    }
+
+    emit_download_progress_bytes(&app, &filename, total, total, true, None);
+    Ok(())
+}
+
+/// Stream a single file to `dest`, reporting cumulative progress where
+/// `base_downloaded` is the bytes already fetched for the whole bundle and
+/// `bundle_total` is the whole bundle size.
+async fn download_stream_to(
+    client: &reqwest::Client,
+    app: &tauri::AppHandle,
+    filename: &str,
+    url: &str,
+    dest: &std::path::Path,
+    base_downloaded: u64,
+    bundle_total: u64,
+) -> Result<(), String> {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let part = dest.with_extension("part");
+    let resp = client.get(url).send().await.map_err(|e| format!("Network error: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {} while downloading {}", resp.status(), url));
+    }
+    let mut file = tokio::fs::File::create(&part).await.map_err(|e| format!("Cannot create file: {e}"))?;
+    let mut file_downloaded = 0_u64;
+    let mut last_pct = 0_u64;
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        file_downloaded += chunk.len() as u64;
+        let cumulative = base_downloaded + file_downloaded;
+        let pct = cumulative.saturating_mul(100).saturating_div(bundle_total).min(99);
+        if pct != last_pct {
+            last_pct = pct;
+            emit_download_progress_bytes(app, filename, cumulative.min(bundle_total), bundle_total, false, None);
+        }
+    }
+    file.flush().await.map_err(|e| e.to_string())?;
+    drop(file);
+    tokio::fs::rename(&part, dest).await.map_err(|e| format!("Rename failed: {e}"))?;
+    Ok(())
 }
 
 /// Download the Parakeet V3 .tar.gz and extract it into the bundle directory in
@@ -452,5 +607,29 @@ fn truncate_error(body: &str) -> String {
     out.push_str("...");
     out
 }
+
+#[tauri::command]
+pub fn delete_model(filename: String) -> Result<(), String> {
+    if filename == PARAKEET_BUNDLE_ID || filename == "nemotron-speech-streaming-en" {
+        let dir = parakeet_bundle_dir();
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+        return Ok(());
+    }
+    if filename == CANARY_BUNDLE_ID || filename == "moonshine-medium-onnx" {
+        let dir = canary_bundle_dir();
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+        return Ok(());
+    }
+    let dest = crate::audio::models_dir().join(&filename);
+    if dest.exists() {
+        let _ = std::fs::remove_file(&dest);
+    }
+    Ok(())
+}
+
 
 

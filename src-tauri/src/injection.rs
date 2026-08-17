@@ -151,28 +151,21 @@ fn send_unicode_windows(text: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    // 2 INPUTs per unit (key down + up). Send in chunks to avoid buffer limits.
-    const CHUNK: usize = 100;
-    for chunk in units.chunks(CHUNK) {
-        let mut inputs: Vec<INPUT> = Vec::with_capacity(chunk.len() * 2);
-        for &u in chunk {
-            inputs.push(unicode_input(u, KEYBD_EVENT_FLAGS(0)));
-            inputs.push(unicode_input(u, KEYEVENTF_KEYUP));
-        }
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(units.len() * 2);
+    for &u in &units {
+        inputs.push(unicode_input(u, KEYBD_EVENT_FLAGS(0)));
+        inputs.push(unicode_input(u, KEYEVENTF_KEYUP));
+    }
 
-        let sent = unsafe {
-            SendInput(&inputs, std::mem::size_of::<INPUT>() as i32)
-        };
-        if (sent as usize) != inputs.len() {
-            return Err(format!(
-                "SendInput accepted {} of {} events (input blocked by foreground app or UIPI).",
-                sent,
-                inputs.len()
-            ));
-        }
-
-        // Tiny pause so hosts that throttle WM_CHAR don't drop characters.
-        std::thread::sleep(std::time::Duration::from_millis(2));
+    let sent = unsafe {
+        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32)
+    };
+    if (sent as usize) != inputs.len() {
+        return Err(format!(
+            "SendInput accepted {} of {} events (input blocked by foreground app or UIPI).",
+            sent,
+            inputs.len()
+        ));
     }
 
     fn unicode_input(ch: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { EmptyState, type HistoryItem } from "./PromptCommon";
@@ -16,7 +16,7 @@ export function HistoryView({
   onUse: (item: HistoryItem) => void;
   onClear: () => Promise<void>;
 }) {
-  const [selected, setSelected] = useState<HistoryItem | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [copied, setCopied] = useState(false);
   const disabled = !historyEnabled || sensitiveMode;
@@ -40,15 +40,10 @@ export function HistoryView({
     );
   }, [items, searchQuery]);
 
-  useEffect(() => {
-    if (filteredItems.length > 0 && !selected) {
-      setSelected(filteredItems[0]);
-    } else if (filteredItems.length === 0) {
-      setSelected(null);
-    } else if (selected && !filteredItems.find((i) => i.id === selected.id)) {
-      setSelected(filteredItems[0]);
-    }
-  }, [filteredItems, selected]);
+  const selected = useMemo(() => {
+    if (!filteredItems.length) return null;
+    return filteredItems.find((item) => item.id === selectedId) ?? filteredItems[0];
+  }, [filteredItems, selectedId]);
 
   if (disabled) {
     return (
@@ -81,7 +76,7 @@ export function HistoryView({
             <div
               key={item.id}
               className={`history-item ${selected?.id === item.id ? "active" : ""}`}
-              onClick={() => setSelected(item)}
+              onClick={() => setSelectedId(item.id)}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: '2px' }}>
                 <strong>{item.actionLabel}</strong>

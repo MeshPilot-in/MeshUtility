@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -6,29 +6,26 @@ import {
   History,
   KeyRound,
   RotateCcw,
-  Search,
   Settings,
   Sparkles,
   Wand2,
-  X,
 } from "lucide-react";
 import {
   builtInPromptActions,
   getMeshPromptProvider,
-  type MeshPromptProviderId,
 } from "../lib";
+import {
+  TitleBar,
+  NavButton,
+} from "./PromptCommon";
 import {
   fallbackSettings,
   generateWithCurrentProvider,
   errorMessage,
-  TitleBar,
-  NavButton,
-  ActionIcon,
   type View,
-  type OverlayPhase,
   type SettingsState,
   type AppState,
-} from "./PromptCommon";
+} from "./promptService";
 
 import { ProviderView } from "./ProviderView";
 import { ActionsView } from "./ActionsView";
@@ -37,6 +34,13 @@ import { SettingsView } from "./SettingsView";
 
 export default function App() {
   return <MainApp />;
+}
+
+interface UpdateCheckResult {
+  updateAvailable: boolean;
+  version: string;
+  changelog: string;
+  downloadUrl: string;
 }
 
 export function MainApp({
@@ -49,13 +53,15 @@ export function MainApp({
   hideSidebar?: boolean;
 }) {
   const [state, setState] = useState<AppState>({ settings: fallbackSettings, history: [], keyStatus: {} });
-  const [view, setView] = useState<View>("text");
+  const [view, setView] = useState<View>(activeView ?? "text");
+  const [prevActiveView, setPrevActiveView] = useState(activeView);
 
-  useEffect(() => {
+  if (activeView !== prevActiveView) {
+    setPrevActiveView(activeView);
     if (activeView) {
       setView(activeView);
     }
-  }, [activeView]);
+  }
 
   const [selectedText, setSelectedText] = useState("");
   const [output, setOutput] = useState("");
@@ -95,7 +101,7 @@ export function MainApp({
 
   async function checkUpdates() {
     try {
-      const result = await invoke<any>("check_for_updates");
+      const result = await invoke<UpdateCheckResult>("check_for_updates");
       if (result && result.updateAvailable) {
         setUpdateInfo(result);
       }
@@ -173,17 +179,6 @@ export function MainApp({
     }
   }
 
-  async function captureText() {
-    setStatus("Capturing selected text...");
-    try {
-      const text = await invoke<string>("capture_selected_text");
-      setSelectedText(text);
-      setStatus("Text captured");
-    } catch (error) {
-      setStatus(errorMessage(error));
-    }
-  }
-
   async function copyOutput() {
     await invoke("copy_text", { text: output });
     setStatus("Copied");
@@ -212,6 +207,9 @@ export function MainApp({
 
     try {
       await invoke("save_provider_key", { provider: providerId, apiKey: trimmedKey });
+      if (providerId === "groq") {
+        await invoke("set_setting", { key: "api_key", value: trimmedKey }).catch(() => {});
+      }
       await refreshState();
       setStatus(`${label} key saved locally.`);
     } catch (error) {
@@ -524,18 +522,6 @@ export function MainApp({
             )}
 
             {view === "actions" && <ActionsView settings={state.settings} saveSettings={saveSettings} />}
-            
-            {view === "providers" && (
-              <ProviderView
-                state={state}
-                apiKeyDraft={apiKeyDraft}
-                setApiKeyDraft={setApiKeyDraft}
-                saveKey={saveKey}
-                clearKey={clearKey}
-                saveProvider={(provider) => saveSettings({ ...state.settings, provider })}
-                setStatus={setStatus}
-              />
-            )}
 
             {view === "history" && (
               <HistoryView
@@ -555,307 +541,24 @@ export function MainApp({
                 }}
               />
             )}
-
-            {view === "settings" && <SettingsView settings={state.settings} saveSettings={saveSettings} />}
+            
+            {(view === "providers" || view === "settings") && (
+              <ProviderView
+                state={state}
+                apiKeyDraft={apiKeyDraft}
+                setApiKeyDraft={setApiKeyDraft}
+                saveKey={saveKey}
+                clearKey={clearKey}
+                saveProvider={(provider) => saveSettings({ ...state.settings, provider })}
+                saveSettings={saveSettings}
+                setStatus={setStatus}
+              />
+            )}
           </section>
         </main>
       </div>
 
       {renderUpdateModal()}
-    </div>
-  );
-}
-
-export function OverlayApp() {
-  const [selectedText, setSelectedText] = useState("");
-  const [output, setOutput] = useState("");
-  const [query, setQuery] = useState("");
-  const [actionId, setActionId] = useState("enhance-prompt");
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [settings, setSettings] = useState<SettingsState>(fallbackSettings);
-  const [phase, setPhase] = useState<OverlayPhase>("picker");
-  const [status, setStatus] = useState("Select an action");
-
-  const actions = useMemo(() => {
-    const normalized = query.toLowerCase().trim();
-    return builtInPromptActions.filter((action) =>
-      `${action.label} ${action.description} ${action.category}`.toLowerCase().includes(normalized),
-    );
-  }, [query]);
-
-  const displayedActions = useMemo(() => {
-    return actions.filter((a) =>
-      ["enhance-prompt", "make-concise", "expand-details", "rewrite-professionally", "developer-prompt", "product-prompt"].includes(a.id)
-    );
-  }, [actions]);
-
-  const activeAction = displayedActions[selectedIndex] ?? builtInPromptActions.find((action) => action.id === actionId) ?? builtInPromptActions[0];
-
-  useEffect(() => {
-    document.body.style.background = "transparent";
-    void invoke<AppState>("get_app_state").then((state) => {
-      const forcedSettings = {
-        ...state.settings,
-        provider: {
-          provider: "groq" as MeshPromptProviderId,
-          model: state.settings.provider.provider === "groq" && state.settings.provider.model
-            ? state.settings.provider.model 
-            : "llama-3.3-70b-versatile",
-          baseUrl: undefined,
-        }
-      };
-      setSettings(forcedSettings);
-      setActionId(state.settings.defaultActionId);
-    });
-    void invoke<string>("get_captured_text").then((text) => {
-      if (text) {
-        setSelectedText(text);
-        setOutput("");
-        setPhase("picker");
-        setStatus("Text captured");
-        void invoke("resize_overlay", { width: 480, height: 180 }).catch(() => {});
-      }
-    });
-    const captured = listen<string>("meshprompt://captured-text", (event) => {
-      void invoke<AppState>("get_app_state").then((state) => {
-        const forcedSettings = {
-          ...state.settings,
-          provider: {
-            provider: "groq" as MeshPromptProviderId,
-            model: state.settings.provider.provider === "groq" && state.settings.provider.model
-              ? state.settings.provider.model 
-              : "llama-3.3-70b-versatile",
-            baseUrl: undefined,
-          }
-        };
-        setSettings(forcedSettings);
-        if (!actionId) setActionId(state.settings.defaultActionId);
-      });
-      setSelectedText(event.payload ?? "");
-      setOutput("");
-      setPhase("picker");
-      setStatus("Text captured");
-      void invoke("resize_overlay", { width: 480, height: 180 }).catch(() => {});
-    });
-    const captureError = listen<string>("meshprompt://capture-error", (event) => {
-      setStatus(event.payload ?? "No selected text found. Paste text below.");
-      setPhase("picker");
-      void invoke("resize_overlay", { width: 480, height: 180 }).catch(() => {});
-    });
-    return () => {
-      void captured.then((off) => off());
-      void captureError.then((off) => off());
-    };
-  }, []);
-
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        void invoke("hide_overlay");
-      }
-      if (phase === "picker" && displayedActions.length > 0) {
-        if (event.key === "ArrowRight") {
-          event.preventDefault();
-          setSelectedIndex((index) => (index + 1) % displayedActions.length);
-        }
-        if (event.key === "ArrowLeft") {
-          event.preventDefault();
-          setSelectedIndex((index) => (index - 1 + displayedActions.length) % displayedActions.length);
-        }
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          setSelectedIndex((index) => {
-            const nextIndex = index + 3;
-            return nextIndex < displayedActions.length ? nextIndex : index;
-          });
-        }
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          setSelectedIndex((index) => {
-            const nextIndex = index - 3;
-            return nextIndex >= 0 ? nextIndex : index;
-          });
-        }
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && output) {
-        event.preventDefault();
-        void copyOverlayOutput();
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && output) {
-        event.preventDefault();
-        void replaceOverlayOutput();
-      } else if (event.key === "Enter" && phase !== "processing") {
-        event.preventDefault();
-        void runOverlayAction();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [displayedActions, output, phase, selectedText, settings, activeAction]);
-
-  async function runOverlayAction(nextActionId?: string) {
-    const action = nextActionId
-      ? builtInPromptActions.find((item) => item.id === nextActionId) ?? activeAction
-      : activeAction;
-    setActionId(action.id);
-    if (!selectedText.trim()) {
-      setStatus("Add text to enhance first.");
-      return;
-    }
-    setPhase("processing");
-    setStatus(action.label);
-    void invoke("resize_overlay", { width: 480, height: 180 }).catch(() => {});
-    try {
-      const response = await generateWithCurrentProvider(settings, action.id, selectedText);
-      
-      if (settings.historyEnabled && !settings.sensitiveMode) {
-        await invoke("add_history", {
-          item: {
-            id: crypto.randomUUID(),
-            actionId: action.id,
-            actionLabel: action.label,
-            provider: response.provider,
-            model: response.model,
-            input: selectedText,
-            output: response.content,
-            createdAt: new Date().toISOString(),
-          },
-        });
-      }
-
-      try {
-        await invoke("hide_overlay");
-        await invoke("replace_selected_text", { text: response.content });
-      } catch (error) {
-        await invoke("show_overlay");
-        await invoke("copy_text", { text: response.content });
-        setOutput(response.content);
-        setPhase("result");
-        setStatus(`Replace failed. Copied instead. ${errorMessage(error)}`);
-        void invoke("resize_overlay", { width: 480, height: 380 }).catch(() => {});
-      }
-    } catch (error: any) {
-      setPhase("picker");
-      let shortError = errorMessage(error);
-      const msg = shortError.toLowerCase();
-      if (msg.includes("fetch") || msg.includes("network")) shortError = "Network error. Check connection.";
-      else if (msg.includes("401") || msg.includes("api key") || msg.includes("unauthorized")) shortError = "Invalid API key.";
-      else if (msg.includes("404")) shortError = "Invalid model or endpoint unreachable.";
-      setStatus(shortError);
-    }
-  }
-
-  async function copyOverlayOutput() {
-    await invoke("copy_text", { text: output });
-    setStatus("Copied");
-  }
-
-  async function replaceOverlayOutput() {
-    try {
-      await invoke("replace_selected_text", { text: output });
-      await invoke("hide_overlay");
-    } catch (error) {
-      await invoke("copy_text", { text: output });
-      setStatus(`Replace failed. Copied instead. ${errorMessage(error)}`);
-    }
-  }
-
-  const isErrorStatus = status && (
-    status.toLowerCase().includes("fail") || 
-    status.toLowerCase().includes("error") || 
-    status.toLowerCase().includes("timed out") || 
-    status.toLowerCase().includes("no selected text") ||
-    status.toLowerCase().includes("invalid")
-  );
-
-  const displaySubtitle = phase === "result" 
-    ? "Result" 
-    : ((status && status !== "Select an action" && status !== "Output ready") 
-        ? status 
-        : "Improve selected text");
-
-  return (
-    <div className="overlay-shell meshprompt-theme">
-      <div className="overlay-card">
-        <div className="overlay-top" data-tauri-drag-region>
-          <div data-tauri-drag-region>
-            <span className="eyebrow" data-tauri-drag-region>MESHUTILITY</span>
-            <h2 
-              data-tauri-drag-region 
-              style={{ 
-                color: isErrorStatus ? "var(--error)" : "var(--text-primary)",
-                transition: "color 0.15s ease"
-              }}
-            >
-              {displaySubtitle}
-            </h2>
-          </div>
-          <button className="overlay-close-btn" data-no-drag onClick={() => invoke("hide_overlay")} aria-label="Close">
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-              <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-
-        {phase !== "result" && (
-          <div className="overlay-search-container">
-            <Search size={14} className="muted" />
-            <input
-              autoFocus
-              placeholder="Paste text here to enhance..."
-              value={selectedText}
-              onChange={(e) => setSelectedText(e.target.value)}
-              className="overlay-search-input"
-            />
-          </div>
-        )}
-
-        {phase === "picker" && (
-          <div className="compact-action-list">
-            {displayedActions.map((action, index) => (
-              <button
-                key={action.id}
-                className={index === selectedIndex ? "compact-action active" : "compact-action"}
-                title={action.description}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => {
-                  setSelectedIndex(index);
-                  void runOverlayAction(action.id);
-                }}
-              >
-                <ActionIcon actionId={action.id} />
-                <strong>{action.id === "rewrite-professionally" ? "Rewrite" : action.id === "developer-prompt" ? "Developer" : action.id === "product-prompt" ? "Product" : action.label}</strong>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {phase === "processing" && (
-          <div className="processing-state">
-            <div className="spinner" />
-            <strong>{status}</strong>
-            <span>Generating with {settings.provider.provider} / {settings.provider.model}</span>
-            <button onClick={() => setPhase("picker")} style={{ cursor: 'pointer' }}>Cancel</button>
-          </div>
-        )}
-
-        {phase === "result" && (
-          <>
-            <div className="result-preview">{output}</div>
-            <div className="overlay-actions">
-              <button className="primary" onClick={() => void copyOverlayOutput()} style={{ cursor: 'pointer' }}>Copy</button>
-              <button onClick={() => void replaceOverlayOutput()} style={{ cursor: 'pointer' }}>Replace</button>
-              <button onClick={() => void runOverlayAction()} style={{ cursor: 'pointer' }}>Retry</button>
-              <button onClick={() => invoke("hide_overlay")} style={{ cursor: 'pointer' }}>Close</button>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }

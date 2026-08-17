@@ -114,16 +114,22 @@ export const meshPromptProviders = [
       chatPath: "/models/{model}:generateContent",
       modelsPath: "/models",
     },
-    defaultModel: "gemini-2.0-flash",
+    defaultModel: "gemini-2.5-flash",
     supportsCustomBaseUrl: true,
     requestFormat: "gemini",
     models: [
+      {
+        id: "gemini-2.5-flash",
+        label: "Gemini 2.5 Flash",
+        contextWindow: 1_048_576,
+        capabilities: ["chat", "json", "vision", "streaming"],
+        defaultFor: ["fast", "balanced"],
+      },
       {
         id: "gemini-2.0-flash",
         label: "Gemini 2.0 Flash",
         contextWindow: 1_048_576,
         capabilities: ["chat", "json", "vision", "streaming"],
-        defaultFor: ["fast", "balanced"],
       },
       {
         id: "gemini-1.5-pro",
@@ -157,14 +163,20 @@ export const meshPromptProviders = [
       },
       {
         id: "llama-3.1-8b-instant",
-        label: "Llama 3.1 8B",
+        label: "Llama 3.1 8B Instant",
         contextWindow: 131_072,
         capabilities: chatCapabilities,
         defaultFor: ["fast"],
       },
       {
-        id: "llama-3.1-70b-versatile",
-        label: "Llama 3.1 70B",
+        id: "openai/gpt-oss-20b",
+        label: "GPT-OSS 20B",
+        contextWindow: 131_072,
+        capabilities: chatCapabilities,
+      },
+      {
+        id: "moonshotai/kimi-k2-instruct",
+        label: "Kimi K2 Instruct",
         contextWindow: 131_072,
         capabilities: chatCapabilities,
       },

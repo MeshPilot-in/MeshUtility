@@ -5,7 +5,7 @@
  * Hover pauses the timer.
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 interface ResultPopupProps {
   text: string
@@ -21,11 +21,7 @@ export function ResultPopup({
 }: ResultPopupProps) {
   const [visible, setVisible] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [progress, setProgress] = useState(100)
-  const pausedRef = useRef(false)
-  const startRef = useRef(0)
-  const pausedAtRef = useRef(0)
-  const elapsedRef = useRef(0)
+  const [paused, setPaused] = useState(false)
 
   // Animate in
   useEffect(() => {
@@ -33,38 +29,13 @@ export function ResultPopup({
     return () => clearTimeout(t)
   }, [])
 
-  // Drain progress bar
-  useEffect(() => {
-    startRef.current = Date.now()
-    const tick = setInterval(() => {
-      if (pausedRef.current) return
-      const elapsed = elapsedRef.current + (Date.now() - startRef.current)
-      const pct = Math.max(0, 100 - (elapsed / autoHideMs) * 100)
-      setProgress(pct)
-      if (pct <= 0) {
-        clearInterval(tick)
-        setVisible(false)
-        setTimeout(onDismiss, 280)
-      }
-    }, 50)
-    return () => clearInterval(tick)
-  }, [autoHideMs, onDismiss])
-
-  const pause = useCallback(() => {
-    pausedRef.current = true
-    pausedAtRef.current = Date.now()
-  }, [])
-
-  const resume = useCallback(() => {
-    elapsedRef.current += Date.now() - pausedAtRef.current
-    startRef.current = Date.now()
-    pausedRef.current = false
-  }, [])
-
-  const dismiss = () => {
+  const dismiss = useCallback(() => {
     setVisible(false)
     setTimeout(onDismiss, 280)
-  }
+  }, [onDismiss])
+
+  const pause = useCallback(() => setPaused(true), [])
+  const resume = useCallback(() => setPaused(false), [])
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(text)
@@ -95,14 +66,19 @@ export function ResultPopup({
         pointerEvents: 'auto',
       }}
     >
-      {/* Progress bar */}
-      <div style={{ height: 2, background: '#1a1a1a', position: 'relative' }}>
-        <div style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0,
-          width: `${progress}%`,
-          background: 'var(--primary)',
-          transition: 'width 50ms linear',
-        }} />
+      {/* Progress bar — GPU-driven CSS scaleX drain, pauses on hover, no JS timer */}
+      <div style={{ height: 2, background: '#1a1a1a', position: 'relative', overflow: 'hidden' }}>
+        <div
+          onAnimationEnd={dismiss}
+          style={{
+            height: '100%',
+            width: '100%',
+            background: 'var(--primary)',
+            transformOrigin: 'left center',
+            animation: `mv-drain ${autoHideMs}ms linear forwards`,
+            animationPlayState: paused ? 'paused' : 'running',
+          }}
+        />
       </div>
 
       {/* Body */}
@@ -158,6 +134,7 @@ export function ResultPopup({
           </button>
         </div>
       </div>
+      <style>{`@keyframes mv-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }`}</style>
     </div>
   )
 }

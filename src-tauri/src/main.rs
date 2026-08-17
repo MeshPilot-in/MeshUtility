@@ -44,6 +44,7 @@ struct RuntimeState {
     captured_len: Mutex<usize>,
     is_terminal: Mutex<bool>,
     captured_text: Mutex<String>,
+    last_target_hwnd: Mutex<Option<usize>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,7 +188,7 @@ fn write_prompt_history(app: &AppHandle, history: &[HistoryItem]) -> Result<(), 
     fs::write(path, raw).map_err(|err| format!("Failed to write history: {err}"))
 }
 
-fn read_provider_key(app: &AppHandle, provider: &str) -> Result<String, String> {
+pub(crate) fn read_provider_key(app: &AppHandle, provider: &str) -> Result<String, String> {
     let encrypted = fs::read(key_path(app, provider)?).map_err(|err| format!("API key is not configured: {err}"))?;
     let decrypted = decrypt_secret(&encrypted)?;
     String::from_utf8(decrypted).map_err(|err| format!("Stored API key is invalid UTF-8: {err}"))
@@ -374,47 +375,25 @@ fn replace_selected_text(app: AppHandle, text: String) -> Result<(), String> {
     let state = app.state::<RuntimeState>();
     let is_term = state.is_terminal.lock().map(|t| *t).unwrap_or(false);
     let cap_len = state.captured_len.lock().map(|l| *l).unwrap_or(0);
+
+    let target_hwnd = state.last_target_hwnd.lock().ok().and_then(|mut guard| guard.take());
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(raw_hwnd) = target_hwnd {
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+                use windows::Win32::Foundation::HWND;
+                let _ = SetForegroundWindow(HWND(raw_hwnd as *mut std::ffi::c_void));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(60));
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = target_hwnd;
+    }
+
     paste_text(&text, settings.restore_clipboard, is_term, cap_len)
-}
-
-#[tauri::command]
-fn show_overlay(app: AppHandle) -> Result<(), String> {
-    show_overlay_window(&app)
-}
-
-#[tauri::command]
-fn hide_overlay(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("overlay") {
-        window.hide().map_err(|err| format!("Failed to hide overlay: {err}"))?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn resize_overlay(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
-    let window = app
-        .get_webview_window("overlay")
-        .ok_or_else(|| "Overlay window is unavailable.".to_string())?;
-    
-    window
-        .set_size(Size::Logical(LogicalSize::new(width, height)))
-        .map_err(|err| format!("Failed to size overlay: {err}"))?;
-
-    if let Ok(Some(monitor)) = window.primary_monitor() {
-        let scale_factor = monitor.scale_factor();
-        let area = monitor.work_area();
-        
-        let work_area_x = area.position.x as f64 / scale_factor;
-        let work_area_y = area.position.y as f64 / scale_factor;
-        let work_area_width = area.size.width as f64 / scale_factor;
-        let work_area_height = area.size.height as f64 / scale_factor;
-
-        let x = work_area_x + (work_area_width - width) / 2.0;
-        let y = work_area_y + work_area_height - height - 80.0;
-
-        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -607,7 +586,7 @@ fn position_widget_bottom_center(app: &tauri::AppHandle) {
 
     let monitor_position = monitor.position();
     let monitor_size = monitor.size();
-    let widget_size = widget.outer_size().unwrap_or_else(|_| tauri::PhysicalSize::new(192, 56));
+    let widget_size = widget.outer_size().unwrap_or_else(|_| tauri::PhysicalSize::new(380, 48));
     let x = monitor_position.x + ((monitor_size.width.saturating_sub(widget_size.width)) / 2) as i32;
     let y = monitor_position.y + monitor_size.height.saturating_sub(widget_size.height + WIDGET_BOTTOM_MARGIN_PX) as i32;
     let _ = widget.set_position(PhysicalPosition::new(x, y));
@@ -633,6 +612,152 @@ fn show_widget(app: AppHandle) -> Result<(), String> {
     show_widget_window(&app)
 }
 
+/// Resize the widget window and keep it centered along the bottom of the
+/// monitor. Used by the hover-merge UI to grow the pill so the connected
+/// Enhance/Polish pills have room to animate out, then shrink back.
+#[tauri::command]
+fn resize_widget(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let widget = app
+        .get_webview_window("widget")
+        .ok_or_else(|| "Widget window is unavailable.".to_string())?;
+
+    let monitor = widget
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| app.primary_monitor().ok().flatten());
+
+    if let Some(monitor) = monitor {
+        let scale = monitor.scale_factor();
+        let new_phys_w = (width * scale).round() as u32;
+        let new_phys_h = (height * scale).round() as u32;
+
+        let monitor_position = monitor.position();
+        let monitor_size = monitor.size();
+
+        let curr_size = widget.outer_size().unwrap_or_else(|_| tauri::PhysicalSize::new(380, 48));
+        let curr_pos = widget.outer_position().unwrap_or_else(|_| tauri::PhysicalPosition::new(0, 0));
+
+        let default_x = monitor_position.x + ((monitor_size.width.saturating_sub(new_phys_w)) / 2) as i32;
+        let default_y = monitor_position.y + monitor_size.height.saturating_sub(new_phys_h + (WIDGET_BOTTOM_MARGIN_PX as f64 * scale).round() as u32) as i32;
+
+        let is_offscreen = curr_pos.x < monitor_position.x - 200 
+            || curr_pos.x > monitor_position.x + monitor_size.width as i32
+            || curr_pos.y < monitor_position.y - 100
+            || curr_pos.y > monitor_position.y + monitor_size.height as i32 - 10;
+
+        let (new_phys_x, new_phys_y) = if is_offscreen {
+            (default_x, default_y)
+        } else {
+            let cx = curr_pos.x + ((curr_size.width as i32 - new_phys_w as i32) / 2);
+            let cy = (curr_pos.y + (curr_size.height as i32 - new_phys_h as i32))
+                .clamp(monitor_position.y, monitor_position.y + monitor_size.height.saturating_sub(new_phys_h + 10) as i32);
+            (cx, cy)
+        };
+
+        #[cfg(target_os = "windows")]
+        {
+            use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOZORDER, SWP_NOACTIVATE, SWP_NOCOPYBITS};
+            use windows::Win32::Foundation::HWND;
+            if let Ok(hwnd) = widget.hwnd() {
+                unsafe {
+                    let _ = SetWindowPos(
+                        HWND(hwnd.0 as *mut std::ffi::c_void),
+                        HWND::default(),
+                        new_phys_x,
+                        new_phys_y,
+                        new_phys_w as i32,
+                        new_phys_h as i32,
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS,
+                    );
+                }
+            } else {
+                widget
+                    .set_size(Size::Logical(LogicalSize::new(width, height)))
+                    .map_err(|err| format!("Failed to size widget: {err}"))?;
+                let _ = widget.set_position(PhysicalPosition::new(new_phys_x, new_phys_y));
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            widget
+                .set_size(Size::Logical(LogicalSize::new(width, height)))
+                .map_err(|err| format!("Failed to size widget: {err}"))?;
+
+            let _ = widget.set_position(PhysicalPosition::new(new_phys_x, new_phys_y));
+        }
+    } else {
+        widget
+            .set_size(Size::Logical(LogicalSize::new(width, height)))
+            .map_err(|err| format!("Failed to size widget: {err}"))?;
+    }
+    Ok(())
+}
+
+/// Only two enhancement actions exist: "enhance-prompt" and "polish". Anything
+/// else (legacy stored default) falls back to enhance-prompt.
+fn normalize_enhance_action(action_id: &str) -> String {
+    if action_id == "polish" { "polish".to_string() } else { "enhance-prompt".to_string() }
+}
+
+/// Capture the current selection and stream an enhancement live on the widget.
+/// Triggered by the connected Enhance/Polish pills. Mirrors `emit_capture` but
+/// carries the specific action chosen from the pill.
+#[tauri::command]
+fn trigger_prompt_action(app: AppHandle, action_id: String) -> Result<(), String> {
+    let state = app.state::<RuntimeState>();
+    if state.paused.lock().map(|paused| *paused).unwrap_or(false) {
+        return Ok(());
+    }
+    let settings = read_settings(&app);
+    let term_active = is_terminal_foreground();
+    if let Ok(mut term) = state.is_terminal.lock() {
+        *term = term_active;
+    }
+    let action_id = normalize_enhance_action(&action_id);
+
+    let target_hwnd = state.last_target_hwnd.lock().ok().and_then(|guard| *guard);
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(raw_hwnd) = target_hwnd {
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+                use windows::Win32::Foundation::HWND;
+                let _ = SetForegroundWindow(HWND(raw_hwnd as *mut std::ffi::c_void));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(60));
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = target_hwnd;
+    }
+
+    match capture_selection(&settings) {
+        Ok(text) => {
+            if let Ok(mut len) = state.captured_len.lock() {
+                *len = text.chars().count();
+            }
+            if let Ok(mut cap_text) = state.captured_text.lock() {
+                *cap_text = text.clone();
+            }
+            show_widget_window(&app)?;
+            let _ = app.emit(
+                "meshprompt://enhance",
+                serde_json::json!({ "text": text, "actionId": action_id }),
+            );
+        }
+        Err(message) => {
+            if let Ok(mut cap_text) = state.captured_text.lock() {
+                *cap_text = String::new();
+            }
+            show_widget_window(&app)?;
+            let _ = app.emit("meshprompt://capture-error", message);
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn hide_widget(app: AppHandle) -> Result<(), String> {
     if let Some(widget) = app.get_webview_window("widget") {
@@ -650,36 +775,6 @@ fn set_widget_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     } else {
         hide_widget(app)?;
     }
-    Ok(())
-}
-
-fn show_overlay_window(app: &AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window("overlay")
-        .ok_or_else(|| "Overlay window is unavailable.".to_string())?;
-
-    let width = 480.0;
-    let height = 180.0;
-    let _ = window.set_size(Size::Logical(LogicalSize::new(width, height)));
-    let _ = window.set_shadow(false);
-
-    if let Ok(Some(monitor)) = window.primary_monitor() {
-        let scale_factor = monitor.scale_factor();
-        let area = monitor.work_area();
-        
-        let work_area_x = area.position.x as f64 / scale_factor;
-        let work_area_y = area.position.y as f64 / scale_factor;
-        let work_area_width = area.size.width as f64 / scale_factor;
-        let work_area_height = area.size.height as f64 / scale_factor;
-
-        let x = work_area_x + (work_area_width - width) / 2.0;
-        let y = work_area_y + work_area_height - height - 80.0;
-
-        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
-    }
-
-    window.show().map_err(|err| format!("Failed to show overlay: {err}"))?;
-    window.set_focus().map_err(|err| format!("Failed to focus overlay: {err}"))?;
     Ok(())
 }
 
@@ -729,11 +824,16 @@ fn load_model(
     filename: String,
 ) -> Result<(), String> {
     // Resolve the on-disk path for the requested model.
-    let model_path = if filename == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8" {
+    let model_path = if filename == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8" || filename == "nemotron-speech-streaming-en" {
         if !transcription::parakeet_bundle_ready() {
             return Err("Parakeet V3 model files are incomplete. Download Parakeet V3 again from Settings.".into());
         }
         transcription::parakeet_bundle_dir().to_string_lossy().to_string()
+    } else if filename == "canary-180m-flash-onnx" || filename == "moonshine-medium-onnx" {
+        if !transcription::canary_bundle_ready() {
+            return Err("Canary 180M Flash model files are incomplete. Download Canary 180M Flash again from Settings.".into());
+        }
+        transcription::canary_bundle_dir().to_string_lossy().to_string()
     } else {
         if !filename.ends_with(".bin") {
             return Err("This model is not selectable by the local engine.".into());
@@ -753,6 +853,8 @@ fn load_model(
     }
     db::DB_CONN.lock().unwrap()
         .execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('model',?)", [&filename]).ok();
+
+    let _ = app.emit("model-selected", &filename);
 
     // Load into the warm engine in the background so selecting a model feels
     // instant. The engine emits "model-loading" / "model-loaded" /
@@ -780,8 +882,22 @@ fn get_downloaded_models() -> Vec<String> {
             } else { None }
         }).collect()
     ).unwrap_or_default();
-    if transcription::parakeet_bundle_ready() && !models.iter().any(|m| m == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8") {
-        models.push("sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8".into());
+    if transcription::parakeet_bundle_ready() {
+        if !models.iter().any(|m| m == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8") {
+            models.push("sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8".into());
+        }
+        if !models.iter().any(|m| m == "nemotron-speech-streaming-en") {
+            models.push("nemotron-speech-streaming-en".into());
+        }
+    }
+
+    if transcription::canary_bundle_ready() {
+        if !models.iter().any(|m| m == "canary-180m-flash-onnx") {
+            models.push("canary-180m-flash-onnx".into());
+        }
+        if !models.iter().any(|m| m == "moonshine-medium-onnx") {
+            models.push("moonshine-medium-onnx".into());
+        }
     }
 
     models
@@ -951,14 +1067,18 @@ fn emit_capture(app: AppHandle) {
             if let Ok(mut cap_text) = state.captured_text.lock() {
                 *cap_text = text.clone();
             }
-            let _ = show_overlay_window(&app);
-            let _ = app.emit("meshprompt://captured-text", text);
+            let _ = show_widget_window(&app);
+            let action_id = normalize_enhance_action(&settings.default_action_id);
+            let _ = app.emit(
+                "meshprompt://enhance",
+                serde_json::json!({ "text": text, "actionId": action_id }),
+            );
         }
         Err(message) => {
             if let Ok(mut cap_text) = state.captured_text.lock() {
                 *cap_text = "".to_string();
             }
-            let _ = show_overlay_window(&app);
+            let _ = show_widget_window(&app);
             let _ = app.emit("meshprompt://capture-error", message);
         }
     }
@@ -1250,6 +1370,49 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             db::init_db();
+            #[cfg(target_os = "windows")]
+            if let Some(widget) = app.get_webview_window("widget") {
+                if let Ok(hwnd) = widget.hwnd() {
+                    let raw_hwnd = hwnd.0;
+                    extern "system" {
+                        fn GetWindowLongW(hwnd: *mut std::ffi::c_void, nindex: i32) -> i32;
+                        fn SetWindowLongW(hwnd: *mut std::ffi::c_void, nindex: i32, dwnewlong: i32) -> i32;
+                    }
+                    unsafe {
+                        let hwnd_ptr = raw_hwnd as *mut std::ffi::c_void;
+                        let gwl_exstyle = -20; // GWL_EXSTYLE
+                        let ws_ex_noactivate = 0x08000000; // WS_EX_NOACTIVATE
+                        let ex_style = GetWindowLongW(hwnd_ptr, gwl_exstyle);
+                        let _ = SetWindowLongW(hwnd_ptr, gwl_exstyle, ex_style | ws_ex_noactivate);
+                    }
+                }
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        let state = app_handle.state::<RuntimeState>();
+                        let widget_hwnd = app_handle
+                            .get_webview_window("widget")
+                            .and_then(|w| w.hwnd().ok())
+                            .map(|h| h.0);
+                        
+                        unsafe {
+                            use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+                            let fg_hwnd = GetForegroundWindow();
+                            if !fg_hwnd.0.is_null() {
+                                if Some(fg_hwnd.0) != widget_hwnd {
+                                    if let Ok(mut last_hwnd) = state.last_target_hwnd.lock() {
+                                        *last_hwnd = Some(fg_hwnd.0 as usize);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
             std::thread::spawn(ensure_autostart_enabled);
             let autostart = launched_from_autostart();
 
@@ -1416,7 +1579,6 @@ fn main() {
                 let title_i = MenuItem::with_id(app, "title", format!("MeshUtility Suite v{}", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
                 let open_voice = MenuItem::with_id(app, "open_voice", "Open Dictation Suite", true, None::<&str>)?;
                 let open_prompt = MenuItem::with_id(app, "open_prompt", "Open Prompt Enhancer", true, None::<&str>)?;
-                let open_overlay = MenuItem::with_id(app, "open_overlay", "Open Prompt Overlay", true, None::<&str>)?;
                 let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
                 let quit = MenuItem::with_id(app, "quit", "Quit Suite", true, Some("Ctrl+Q"))?;
                 let separator_1 = PredefinedMenuItem::separator(app)?;
@@ -1426,7 +1588,6 @@ fn main() {
                     &separator_1,
                     &open_voice,
                     &open_prompt,
-                    &open_overlay,
                     &settings,
                     &separator_2,
                     &quit
@@ -1452,9 +1613,6 @@ fn main() {
                         "open_prompt" => {
                             let _ = open_main_window(app);
                             let _ = app.emit("navigate-view", "prompt");
-                        }
-                        "open_overlay" => {
-                            let _ = show_overlay_window(app);
                         }
                         "settings" => {
                             let _ = open_main_window(app);
@@ -1502,6 +1660,7 @@ fn main() {
             db::delete_all_history,
             transcription::get_available_models,
             transcription::download_model,
+            transcription::delete_model,
             load_model,
             get_downloaded_models,
             reregister_hotkey,
@@ -1509,6 +1668,8 @@ fn main() {
             show_main_window,
             show_widget,
             hide_widget,
+            resize_widget,
+            trigger_prompt_action,
             set_widget_enabled,
             get_language_mode,
             set_language_mode,
@@ -1525,9 +1686,6 @@ fn main() {
             get_captured_text,
             copy_text,
             replace_selected_text,
-            show_overlay,
-            hide_overlay,
-            resize_overlay,
             set_paused,
             proxy_request,
             check_for_updates,
@@ -1538,3 +1696,5 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+// Dev watcher rebuild test comment
+

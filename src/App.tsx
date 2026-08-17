@@ -5,16 +5,15 @@ import {
   BookOpen,
   ClipboardList,
   Clock3,
+  Cpu,
   Info,
   KeyRound,
   Mic2,
   PanelLeft,
   Palette,
-  Settings2,
-  Sparkles,
-  WandSparkles,
 } from 'lucide-react'
 import { Dashboard } from './components/Dashboard'
+import { Models } from './components/Models'
 import { Settings } from './components/Settings'
 import { DictionaryEditor } from './components/DictionaryEditor'
 import { MainApp as PromptApp } from './components/PromptApp'
@@ -23,20 +22,17 @@ import { AboutView } from './components/AboutView'
 import { VersionWidget } from './components/VersionWidget'
 import { UpdateWidget } from './components/UpdateWidget'
 import { applyStoredTheme } from './lib/appearance'
-import { useAppStore } from './store/appStore'
 
 import './styles-prompt.css'
 import './App.css'
 
 type View =
   | 'voice-history'
+  | 'prompt-history'
+  | 'voice-models'
   | 'voice-dictionary'
   | 'voice-settings'
-  | 'prompt-enhancer'
-  | 'prompt-actions'
-  | 'prompt-history'
   | 'prompt-providers'
-  | 'prompt-settings'
   | 'appearance'
   | 'about'
 
@@ -56,23 +52,16 @@ const GROUPS: NavGroup[] = [
     title: 'Voice Dictation',
     items: [
       { id: 'voice-history', label: 'Dictation History', icon: <Clock3 size={15} strokeWidth={1.8} /> },
-      { id: 'voice-dictionary', label: 'Custom Dictionary', icon: <BookOpen size={15} strokeWidth={1.8} /> },
-    ],
-  },
-  {
-    title: 'Prompt Enhancer',
-    items: [
-      { id: 'prompt-enhancer', label: 'Enhance Prompt', icon: <WandSparkles size={15} strokeWidth={1.8} /> },
-      { id: 'prompt-actions', label: 'Prompt Actions', icon: <Sparkles size={15} strokeWidth={1.8} /> },
       { id: 'prompt-history', label: 'Action History', icon: <ClipboardList size={15} strokeWidth={1.8} /> },
+      { id: 'voice-models', label: 'Speech Models', icon: <Cpu size={15} strokeWidth={1.8} /> },
+      { id: 'voice-dictionary', label: 'Custom Dictionary', icon: <BookOpen size={15} strokeWidth={1.8} /> },
     ],
   },
   {
     title: 'Configuration',
     items: [
-      { id: 'voice-settings', label: 'Voice Settings', icon: <Mic2 size={15} strokeWidth={1.8} /> },
-      { id: 'prompt-providers', label: 'AI Providers', icon: <KeyRound size={15} strokeWidth={1.8} /> },
-      { id: 'prompt-settings', label: 'Enhancer Settings', icon: <Settings2 size={15} strokeWidth={1.8} /> },
+      { id: 'voice-settings', label: 'Voice & Widget', icon: <Mic2 size={15} strokeWidth={1.8} /> },
+      { id: 'prompt-providers', label: 'AI Providers & Models', icon: <KeyRound size={15} strokeWidth={1.8} /> },
       { id: 'appearance', label: 'Appearance', icon: <Palette size={15} strokeWidth={1.8} /> },
       { id: 'about', label: 'About', icon: <Info size={15} strokeWidth={1.8} /> },
     ],
@@ -147,7 +136,6 @@ function WinButton({ label, onClick, danger, children }: {
 export default function App() {
   const [view, setView] = useState<View>(getInitialView)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const engine = useAppStore((state) => state.engine)
   const appWindowRef = useRef<ReturnType<typeof getCurrentWindow> | null>(null)
 
   useEffect(() => {
@@ -161,7 +149,7 @@ export default function App() {
       if (targetView === 'dashboard') {
         setView('voice-history')
       } else if (targetView === 'prompt') {
-        setView('prompt-enhancer')
+        setView('prompt-history')
       } else if (targetView === 'settings') {
         setView('voice-settings')
       } else if (targetView === 'dictionary') {
@@ -175,11 +163,8 @@ export default function App() {
 
     const unsubPromptView = listen<string>('meshprompt://open-view', (event) => {
       const promptView = event.payload
-      if (promptView === 'text') setView('prompt-enhancer')
-      else if (promptView === 'providers') setView('prompt-providers')
-      else if (promptView === 'actions') setView('prompt-actions')
-      else if (promptView === 'history') setView('prompt-history')
-      else if (promptView === 'settings') setView('prompt-settings')
+      if (promptView === 'providers' || promptView === 'settings') setView('prompt-providers')
+      else if (promptView === 'history' || promptView === 'actions' || promptView === 'text') setView('prompt-history')
     })
 
     return () => {
@@ -286,6 +271,9 @@ export default function App() {
           <div style={{ display: view === 'voice-history' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
             <Dashboard />
           </div>
+          <div style={{ display: view === 'voice-models' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+            <Models />
+          </div>
           <div style={{ display: view === 'voice-dictionary' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
             <DictionaryEditor />
           </div>
@@ -301,7 +289,7 @@ export default function App() {
 
           <div
             style={{
-              display: ['prompt-enhancer', 'prompt-actions', 'prompt-history', 'prompt-providers', 'prompt-settings'].includes(view) ? 'flex' : 'none',
+              display: ['prompt-history', 'prompt-providers'].includes(view) ? 'flex' : 'none',
               flexDirection: 'column',
               height: '100%',
               width: '100%',
@@ -312,12 +300,9 @@ export default function App() {
               embed={true}
               hideSidebar={true}
               activeView={
-                view === 'prompt-enhancer' ? 'text' :
-                view === 'prompt-actions' ? 'actions' :
                 view === 'prompt-history' ? 'history' :
                 view === 'prompt-providers' ? 'providers' :
-                view === 'prompt-settings' ? 'settings' :
-                'text'
+                'history'
               }
             />
           </div>

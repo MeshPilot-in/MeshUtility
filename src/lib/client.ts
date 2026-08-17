@@ -11,7 +11,6 @@ import type {
   MeshPromptProviderErrorCode,
   MeshPromptProviderId,
   MeshPromptTokenUsage,
-  MeshPromptToolCall,
 } from "./types";
 import { MeshPromptProviderError } from "./types";
 
@@ -157,7 +156,7 @@ export class MeshPromptClient {
       let responseStatus: number;
       let ok: boolean;
 
-      if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+      if (typeof window !== "undefined" && Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__)) {
         try {
           const [status, text] = await invoke<[number, string]>("proxy_request", {
             url,

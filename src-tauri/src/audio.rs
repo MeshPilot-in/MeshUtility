@@ -341,7 +341,7 @@ where
 
 #[tauri::command]
 pub async fn start_recording(
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<u64, String> {
     if *state.is_recording.lock().unwrap() {
@@ -357,6 +357,62 @@ pub async fn start_recording(
     CAPTURE_ACTIVE.store(true, Ordering::SeqCst);
     *state.is_recording.lock().unwrap() = true;
 
+    // Only run live background streaming for models that support streaming architecture (Nemotron / Parakeet / Canary / Moonshine)
+    let model_path_opt = state.selected_model.lock().unwrap().clone();
+    let is_streaming_supported = model_path_opt.as_ref().map_or(false, |m| {
+        let lower = m.to_lowercase();
+        lower.contains("nemotron") || lower.contains("parakeet") || lower.contains("moonshine") || lower.contains("canary") || std::path::Path::new(m).is_dir()
+    });
+
+    if is_streaming_supported {
+        let app_handle = app.clone();
+        let is_recording_flag = state.is_recording.clone();
+        let recording_session_flag = state.recording_session_id.clone();
+
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+            while CAPTURE_ACTIVE.load(Ordering::SeqCst) && *is_recording_flag.lock().unwrap() && *recording_session_flag.lock().unwrap() == session_id {
+                let (raw, has_enough) = {
+                    let buf = AUDIO_BUFFER.lock().unwrap();
+                    let has = buf.len() >= 4000;
+                    (buf.clone(), has)
+                };
+                if !has_enough || !CAPTURE_ACTIVE.load(Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    continue;
+                }
+
+                let rate = *DEVICE_SAMPLE_RATE.lock().unwrap();
+                if let Some(samples) = trim_voice_activity(&raw, rate) {
+                    let samples_16k = resample_to_16k(&samples, rate);
+                    if samples_16k.len() >= 4000 && CAPTURE_ACTIVE.load(Ordering::SeqCst) {
+                        if let Some(model_path) = model_path_opt.as_ref() {
+                            use tauri::Manager;
+                            if let Some(voice_engine) = app_handle.try_state::<crate::engine::VoiceEngine>() {
+                                let engine = voice_engine.inner().clone();
+                                let model_p = model_path.clone();
+                                let samples_vec = samples_16k.clone();
+                                let res = tokio::task::spawn_blocking(move || {
+                                    engine.transcribe(&model_p, samples_vec, "auto", None)
+                                }).await;
+                                if let Ok(Ok(partial)) = res {
+                                    let trimmed = partial.trim();
+                                    if !trimmed.is_empty() && CAPTURE_ACTIVE.load(Ordering::SeqCst) && *is_recording_flag.lock().unwrap() && *recording_session_flag.lock().unwrap() == session_id {
+                                        let clean_text = normalize_technical_transcript(trimmed);
+                                        let _ = app_handle.emit("transcription-partial", clean_text);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        });
+    }
+
     Ok(session_id)
 }
 
@@ -368,6 +424,7 @@ pub async fn stop_recording_and_transcribe(
     access_token: Option<String>,
     session_id: Option<u64>,
 ) -> Result<String, String> {
+    CAPTURE_ACTIVE.store(false, Ordering::SeqCst);
     if let Some(stop_session_id) = session_id {
         let current_session_id = *state.recording_session_id.lock().unwrap();
         if stop_session_id != current_session_id {
@@ -381,8 +438,6 @@ pub async fn stop_recording_and_transcribe(
         }
         *is_recording = false;
     }
-    CAPTURE_ACTIVE.store(false, Ordering::SeqCst);
-    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
 
     let raw = AUDIO_BUFFER.lock().unwrap().clone();
     let rate = *DEVICE_SAMPLE_RATE.lock().unwrap();
@@ -425,7 +480,7 @@ pub async fn stop_recording_and_transcribe(
     });
 
     let (text, source) = transcribe(&samples, &state, &wav_path, &app_handle, access_token).await?;
-    let text = if source == "parakeet" {
+    let text = if source.contains("Nemotron") || source.contains("Parakeet") || source == "parakeet" {
         normalize_technical_transcript(&text)
     } else {
         text
@@ -492,7 +547,7 @@ pub async fn stop_recording_and_transcribe(
 }
 
 /// Transcription strategy:
-/// Honors the selected engine: local whisper.cpp or Groq cloud.
+/// Honors the selected engine: local or cloud.
 async fn transcribe(
     samples: &[f32],
     state: &tauri::State<'_, crate::AppState>,
@@ -511,7 +566,10 @@ async fn transcribe(
     };
 
     if engine == "cloud" {
-        if let Some(key) = &api_key {
+        let key = api_key
+            .or_else(|| crate::read_provider_key(app_handle, "groq").ok())
+            .or_else(|| crate::read_provider_key(app_handle, "openai").ok());
+        if let Some(key) = &key {
             return crate::transcription::transcribe_via_groq(samples, key).await
                 .map(|text| (text, "cloud".into()));
         }
@@ -519,7 +577,7 @@ async fn transcribe(
             return crate::transcription::transcribe_via_meshpilot_cloud(samples, token).await
                 .map(|text| (text, "cloud".into()));
         }
-        return Err("Cloud mode requires a Groq API key in Settings or a MeshPilot sign-in.".to_string());
+        return Err("Cloud mode requires an API key in AI Providers.".to_string());
     }
 
     // Read language setting
@@ -538,7 +596,7 @@ async fn transcribe(
 
     let model_path = state.selected_model.lock().unwrap().clone();
     let Some(model) = model_path else {
-        return Err("Local mode requires a downloaded model. Open Settings and download Parakeet V3 or a Whisper model.".into());
+        return Err("Local mode requires a downloaded model. Open Speech Models and download Nemotron 3.5 or a Whisper model.".into());
     };
 
     // A directory is the in-memory Parakeet bundle; a file is a whisper.cpp model.
@@ -555,7 +613,33 @@ async fn transcribe(
         None
     };
 
-    let source = if is_parakeet { "parakeet" } else { "local" };
+    let selected_setting = crate::db::DB_CONN.lock().ok().and_then(|conn| {
+        conn.query_row("SELECT value FROM settings WHERE key = 'model'", [], |r| r.get::<_, String>(0)).ok()
+    }).unwrap_or_default();
+
+    let model_lower = format!("{} {}", model.to_lowercase(), selected_setting.to_lowercase());
+
+    let source = if model_lower.contains("nemotron") {
+        "Nemotron 3.5".to_string()
+    } else if model_lower.contains("parakeet") {
+        "Parakeet V3".to_string()
+    } else if model_lower.contains("moonshine") || model_lower.contains("canary") {
+        "Moonshine Medium".to_string()
+    } else if model_lower.contains("large-v3-turbo") || model_lower.contains("turbo") {
+        "Whisper Turbo".to_string()
+    } else if model_lower.contains("distil-large") {
+        "Whisper Distil-Large".to_string()
+    } else if model_lower.contains("small") {
+        "Whisper Small".to_string()
+    } else if model_lower.contains("base") {
+        "Whisper Base".to_string()
+    } else if model_lower.contains("tiny") {
+        "Whisper Tiny".to_string()
+    } else if is_parakeet {
+        "Nemotron 3.5".to_string()
+    } else {
+        "Local Whisper".to_string()
+    };
 
     // Run against the persistent in-memory engine. The model is kept warm in a
     // cache, so consecutive dictations (and switching back to a previously used
@@ -571,7 +655,7 @@ async fn transcribe(
     .await
     .map_err(|e| format!("Transcription task failed: {e}"))??;
 
-    Ok((text, source.to_string()))
+    Ok((text, source))
 }
 
 fn normalize_transcript_text(text: &str) -> String {
