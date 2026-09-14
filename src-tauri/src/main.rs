@@ -1644,6 +1644,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             // Voice Dictation Commands
             audio::start_recording,
+            audio::stop_recording,
             audio::stop_recording_and_transcribe,
             audio::get_audio_devices,
             audio::check_microphone_status,

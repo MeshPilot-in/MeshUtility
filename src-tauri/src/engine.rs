@@ -59,6 +59,8 @@ pub struct VoiceEngine {
     /// Guards model loading so two loads cannot run at once.
     is_loading: Arc<Mutex<bool>>,
     loading_cv: Arc<Condvar>,
+    /// Serializes inference so concurrent transcribe calls don't conflict or reload.
+    inference_lock: Arc<Mutex<()>>,
     last_activity: Arc<AtomicU64>,
     shutdown: Arc<AtomicBool>,
 }
@@ -206,6 +208,7 @@ impl VoiceEngine {
             selected: Arc::new(Mutex::new(None)),
             is_loading: Arc::new(Mutex::new(false)),
             loading_cv: Arc::new(Condvar::new()),
+            inference_lock: Arc::new(Mutex::new(())),
             last_activity: Arc::new(AtomicU64::new(now_secs())),
             shutdown: Arc::new(AtomicBool::new(false)),
         };
@@ -371,9 +374,104 @@ impl VoiceEngine {
         }
     }
 
-    /// Run transcription against the model at `model_path`. `language` is the
-    /// same flag the old subprocess path used ("auto", "en", "hi", ...). For
-    /// Parakeet (multilingual, auto-detecting) the language flag is ignored.
+    /// Performs transcription while holding the inference lock.
+    fn transcribe_locked(
+        &self,
+        model_path: &str,
+        samples: &[f32],
+        language: &str,
+        initial_prompt: Option<&str>,
+    ) -> Result<String, String> {
+        let mut cache = self.lock_cache();
+        let cached = match cache.as_mut() {
+            Some(c) if c.path == model_path => c,
+            Some(_) => return Err("A different model is loaded for transcription.".into()),
+            None => return Err("Model is not loaded for transcription.".into()),
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            match &mut cached.engine {
+                LoadedEngine::Whisper(engine) => engine.transcribe(
+                    samples,
+                    language,
+                    initial_prompt.filter(|s| !s.trim().is_empty()),
+                ),
+                LoadedEngine::Parakeet(engine) => {
+                    let params = ParakeetParams {
+                        timestamp_granularity: Some(TimestampGranularity::Segment),
+                        ..Default::default()
+                    };
+                    engine
+                        .transcribe_with(samples, &params)
+                        .map(|r| r.text)
+                        .map_err(|e| format!("Parakeet transcription failed: {e}"))
+                }
+                LoadedEngine::Canary(engine) => {
+                    let lang = match language {
+                        "auto" | "" => "en".to_string(),
+                        other => other.to_string(),
+                    };
+                    let params = CanaryParams {
+                        language: Some(lang),
+                        ..Default::default()
+                    };
+                    engine
+                        .transcribe_with(samples, &params)
+                        .map(|r| r.text)
+                        .map_err(|e| format!("Canary transcription failed: {e}"))
+                }
+            }
+        }));
+
+        self.touch();
+
+        match result {
+            Ok(Ok(text)) => {
+                cached.last_used = now_secs();
+                Ok(text.trim().to_string())
+            }
+            Ok(Err(e)) => {
+                cached.last_used = now_secs();
+                Err(e)
+            }
+            Err(_) => {
+                let _ = cache.take();
+                let _ = self.app.emit("model-unloaded", ());
+                Err("Transcription engine crashed and was unloaded. Please try again.".to_string())
+            }
+        }
+    }
+
+    /// Try to run streaming partial transcription without blocking.
+    /// If inference is currently busy (e.g. earlier tick or final stop transcribe),
+    /// this returns Ok(None) to skip the tick cleanly.
+    pub fn try_transcribe(
+        &self,
+        model_path: &str,
+        samples: Vec<f32>,
+        language: &str,
+        initial_prompt: Option<String>,
+    ) -> Result<Option<String>, String> {
+        self.touch();
+        if samples.is_empty() {
+            return Ok(Some(String::new()));
+        }
+
+        let _infer_guard = match self.inference_lock.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => return Ok(None),
+        };
+
+        if !self.is_cached(model_path) {
+            self.load_model(model_path)?;
+        }
+
+        let text = self.transcribe_locked(model_path, &samples, language, initial_prompt.as_deref())?;
+        Ok(Some(text))
+    }
+
+    /// Run transcription against the model at `model_path`. Serialized via `inference_lock`
+    /// so it safely waits for any active streaming tick to finish and reuses the warm model.
     pub fn transcribe(
         &self,
         model_path: &str,
@@ -387,79 +485,13 @@ impl VoiceEngine {
             return Ok(String::new());
         }
 
+        let _infer_guard = self.inference_lock.lock().unwrap();
+
         if !self.is_cached(model_path) {
             self.load_model(model_path)?;
         }
 
-        // Take the engine out of the cache so inference can run without holding
-        // the mutex. It is put back unless the underlying engine panics.
-        let mut owned = {
-            let mut cache = self.lock_cache();
-            match cache.take() {
-                Some(cached) if cached.path == model_path => cached,
-                Some(cached) => {
-                    *cache = Some(cached);
-                    return Err("A different model is loaded for transcription.".into());
-                }
-                None => return Err("Model is not loaded for transcription.".into()),
-            }
-        };
-
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            match &mut owned.engine {
-                LoadedEngine::Whisper(engine) => engine.transcribe(
-                    &samples,
-                    language,
-                    initial_prompt.as_deref().filter(|s| !s.trim().is_empty()),
-                ),
-                LoadedEngine::Parakeet(engine) => {
-                    let params = ParakeetParams {
-                        timestamp_granularity: Some(TimestampGranularity::Segment),
-                        ..Default::default()
-                    };
-                    engine
-                        .transcribe_with(&samples, &params)
-                        .map(|r| r.text)
-                        .map_err(|e| format!("Parakeet transcription failed: {e}"))
-                }
-                LoadedEngine::Canary(engine) => {
-                    // Canary is multilingual (Flash: en/de/es/fr). Map the app's
-                    // "auto"/"" flag to English as a safe default; pass through
-                    // any explicit ISO code the user selected.
-                    let lang = match language {
-                        "auto" | "" => "en".to_string(),
-                        other => other.to_string(),
-                    };
-                    let params = CanaryParams {
-                        language: Some(lang),
-                        ..Default::default()
-                    };
-                    engine
-                        .transcribe_with(&samples, &params)
-                        .map(|r| r.text)
-                        .map_err(|e| format!("Canary transcription failed: {e}"))
-                }
-            }
-        }));
-
-        self.touch();
-
-        match result {
-            Ok(Ok(text)) => {
-                owned.last_used = now_secs();
-                self.store(owned);
-                Ok(text.trim().to_string())
-            }
-            Ok(Err(e)) => {
-                owned.last_used = now_secs();
-                self.store(owned);
-                Err(e)
-            }
-            Err(_) => {
-                let _ = self.app.emit("model-unloaded", ());
-                Err("Transcription engine crashed and was unloaded. Please try again.".to_string())
-            }
-        }
+        self.transcribe_locked(model_path, &samples, language, initial_prompt.as_deref())
     }
 
     /// Free the resident model after the configured idle timeout.

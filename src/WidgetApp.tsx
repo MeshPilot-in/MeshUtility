@@ -391,7 +391,14 @@ export default function WidgetApp() {
       void refreshMicStatus()
       return
     }
-    if (stateRef.current !== 'idle') return
+    if (stateRef.current === 'done') {
+      if (doneRef.current) {
+        clearTimeout(doneRef.current)
+        doneRef.current = null
+      }
+    } else if (stateRef.current !== 'idle') {
+      return
+    }
     try {
       clearPartialTranscription()
       const currentModel = await invoke<string|null>('get_setting', { key: 'model' }).catch(() => null)
@@ -409,7 +416,15 @@ export default function WidgetApp() {
 
   const stopCapture = useCallback(async () => {
     if (stateRef.current !== 'listening') return
-    if (Date.now() < releaseGuardUntilRef.current) return
+    const remainingGuard = releaseGuardUntilRef.current - Date.now()
+    if (remainingGuard > 0) {
+      setTimeout(() => {
+        if (stateRef.current === 'listening') {
+          void stopCapture()
+        }
+      }, remainingGuard)
+      return
+    }
     const sessionId = sessionIdRef.current
     if (sessionId == null) return
     const durationMs = Date.now() - recStartRef.current

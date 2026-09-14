@@ -394,9 +394,9 @@ pub async fn start_recording(
                                 let model_p = model_path.clone();
                                 let samples_vec = samples_16k.clone();
                                 let res = tokio::task::spawn_blocking(move || {
-                                    engine.transcribe(&model_p, samples_vec, "auto", None)
+                                    engine.try_transcribe(&model_p, samples_vec, "auto", None)
                                 }).await;
-                                if let Ok(Ok(partial)) = res {
+                                if let Ok(Ok(Some(partial))) = res {
                                     let trimmed = partial.trim();
                                     if !trimmed.is_empty() && CAPTURE_ACTIVE.load(Ordering::SeqCst) && *is_recording_flag.lock().unwrap() && *recording_session_flag.lock().unwrap() == session_id {
                                         let clean_text = normalize_technical_transcript(trimmed);
@@ -414,6 +414,14 @@ pub async fn start_recording(
     }
 
     Ok(session_id)
+}
+
+#[tauri::command]
+pub fn stop_recording(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
+    CAPTURE_ACTIVE.store(false, Ordering::SeqCst);
+    *state.is_recording.lock().unwrap() = false;
+    AUDIO_BUFFER.lock().unwrap().clear();
+    Ok(())
 }
 
 #[tauri::command]

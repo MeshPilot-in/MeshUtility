@@ -34,8 +34,15 @@ fn copy_runtime_libs() {
         // DLLs that must travel next to the executable at runtime.
         for dll in ["DirectML.dll"] {
             let src = profile_dir.join(dll);
+            let dest = dest_dir.join(dll);
             if src.exists() {
-                let _ = std::fs::copy(&src, dest_dir.join(dll));
+                let should_copy = match (dest.metadata(), src.metadata()) {
+                    (Ok(dm), Ok(sm)) => dm.len() != sm.len(),
+                    _ => true,
+                };
+                if should_copy {
+                    let _ = std::fs::copy(&src, &dest);
+                }
             }
         }
     }
