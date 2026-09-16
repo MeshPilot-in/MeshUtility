@@ -24,7 +24,7 @@ jobs:
         include:
           - platform: 'macos-latest'
             args: ''
-          - platform: 'windows-latest'
+          - platform: 'windows-2022'
             args: ''
 
     runs-on: ${{ matrix.platform }}
@@ -52,8 +52,12 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Set up MSVC (Windows)
+        if: startsWith(matrix.platform, 'windows')
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Install Vulkan SDK (Windows)
-        if: matrix.platform == 'windows-latest'
+        if: startsWith(matrix.platform, 'windows')
         shell: pwsh
         run: |
           $version = '1.4.350.0'
