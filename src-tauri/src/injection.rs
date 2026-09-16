@@ -137,6 +137,52 @@ pub fn inject_text(text: &str) -> Result<(), String> {
     clipboard_paste(text, /* try_shift_insert_fallback */ true)
 }
 
+/// Inject while the always-on-top widget is temporarily hidden. A visible
+/// Tauri window can become the active application when it was clicked during
+/// recording, which would send Cmd+V back into the widget instead of the app
+/// where dictation started. Hiding it lets macOS restore the previous app's
+/// text focus before the paste event is posted.
+pub fn inject_text_for_app(app: &tauri::AppHandle, text: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Quartz Accessibility and CGEvent APIs are safest on the AppKit main
+        // thread. Dictation completion runs on Tokio, so dispatch the whole
+        // hide/paste/show transaction and wait for its result.
+        let text = text.to_string();
+        let handle = app.clone();
+        let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel(1);
+        app.run_on_main_thread(move || {
+            let result = inject_text_for_app_main_thread(&handle, &text);
+            let _ = reply_tx.send(result);
+        }).map_err(|err| format!("Could not schedule text injection: {err}"))?;
+        return reply_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "Text injection timed out while switching back to the selected app.".to_string())?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        inject_text_for_app_main_thread(app, text)
+    }
+}
+
+fn inject_text_for_app_main_thread(app: &tauri::AppHandle, text: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+        if let Some(widget) = app.get_webview_window("widget") {
+            let _ = widget.hide();
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            let result = inject_text(text);
+            let _ = widget.show();
+            return result;
+        }
+    }
+
+    let _ = app;
+    inject_text(text)
+}
+
 #[cfg(target_os = "windows")]
 fn send_unicode_windows(text: &str) -> Result<(), String> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{

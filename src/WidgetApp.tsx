@@ -51,13 +51,22 @@ interface AppSettingsLike {
 }
 
 function isMicError(msg: string) {
-  return msg.toLowerCase().includes('mic') ||
-         msg.toLowerCase().includes('microphone') ||
-         msg.toLowerCase().includes('stream') ||
-         msg.toLowerCase().includes('audio') ||
-         msg.toLowerCase().includes('permission') ||
-         msg.toLowerCase().includes('blocked') ||
-         msg.toLowerCase().includes('privacy')
+  const lower = msg.toLowerCase()
+  // Accessibility permission errors come from text injection, not the mic.
+  // Keep them out of the mic recovery flow so we do not send users to the
+  // microphone settings when Cmd+V was blocked.
+  if (lower.includes('accessibility') || lower.includes('type into other apps')) return false
+  return lower.includes('mic') ||
+         lower.includes('microphone') ||
+         lower.includes('stream') ||
+         lower.includes('audio') ||
+         lower.includes('microphone access') ||
+         lower.includes('privacy')
+}
+
+function isAccessibilityError(msg: string) {
+  const lower = msg.toLowerCase()
+  return lower.includes('accessibility') || lower.includes('type into other apps')
 }
 
 function isTransientWidgetState(state: PillState) {
@@ -69,6 +78,7 @@ export default function WidgetApp() {
   const [contentVisible, setContentVisible] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
   const [errorIsMic, setErrorIsMic] = useState(false)
+  const [errorIsAccessibility, setErrorIsAccessibility] = useState(false)
   const [micDetail, setMicDetail] = useState('Checking microphone')
   const [widgetStyle, setWidgetStyle] = useState<WidgetStyle>('pill')
   const widgetStyleRef = useRef<WidgetStyle>('pill')
@@ -92,11 +102,14 @@ export default function WidgetApp() {
   const [doneLabel, setDoneLabel] = useState('Injected')
   const abortRef = useRef<AbortController | null>(null)
   const streamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const wasCardRef = useRef(false)
 
   const stateRef = useRef<PillState>('idle')
   const widgetEnabledRef = useRef(true)
   const recStartRef = useRef(0)
   const sessionIdRef = useRef<number | null>(null)
+  const startingRef = useRef(false)
+  const releasePendingRef = useRef(false)
   const releaseGuardUntilRef = useRef(0)
   const doneRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const transitionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -142,12 +155,6 @@ export default function WidgetApp() {
     return m.includes('nemotron') || m.includes('parakeet') || m.includes('moonshine') || m.includes('canary') || m.includes('sherpa')
   }, [activeModel])
 
-  const resizeTo = useCallback(async (s: PillState, forceCard?: boolean) => {
-    const isCard = forceCard || s === 'enhancing' || ((isStreamingModel || Boolean(partialTranscription && partialTranscription.trim())) && (s === 'listening' || s === 'processing'))
-    const { w, h } = isCard ? { w: 380, h: 124 } : { w: 380, h: 48 }
-    invoke('resize_widget', { width: w, height: h }).catch(() => {})
-  }, [isStreamingModel, partialTranscription])
-
   const transition = useCallback((next: PillState) => {
     // Leaving idle (recording, error, etc.) must dismiss any open hover cluster.
     if (next !== 'idle' && hoveredRef.current) {
@@ -156,27 +163,22 @@ export default function WidgetApp() {
       if (collapseGraceTimerRef.current) { clearTimeout(collapseGraceTimerRef.current); collapseGraceTimerRef.current = null }
       if (collapseTimerRef.current) { clearTimeout(collapseTimerRef.current); collapseTimerRef.current = null }
     }
-    if (stateRef.current === next) {
-      void resizeTo(next)
-      return
-    }
+    if (stateRef.current === next) return
     if (transitionRef.current) clearTimeout(transitionRef.current)
     stateRef.current = next
     setPillState(next)
     setContentVisible(false)
-    void resizeTo(next)
     transitionRef.current = setTimeout(() => {
       setContentVisible(true)
       transitionRef.current = null
     }, 60)
-  }, [resizeTo])
+  }, [])
 
   // Smoothly reveal the connected action pills via GPU CSS animation (zero OS resize / zero flicker). Idle only.
   const expandHover = useCallback(() => {
     if (stateRef.current !== 'idle') return
     if (collapseGraceTimerRef.current) { clearTimeout(collapseGraceTimerRef.current); collapseGraceTimerRef.current = null }
     if (collapseTimerRef.current) { clearTimeout(collapseTimerRef.current); collapseTimerRef.current = null }
-    if (hoveredRef.current) return
     hoveredRef.current = true
     setHovered(true)
   }, [])
@@ -184,13 +186,36 @@ export default function WidgetApp() {
   // Animate the pills back in with a grace debounce without resizing the native window.
   const collapseHover = useCallback(() => {
     if (!hoveredRef.current) return
-    if (collapseGraceTimerRef.current) clearTimeout(collapseGraceTimerRef.current)
+    if (collapseGraceTimerRef.current) return
     collapseGraceTimerRef.current = setTimeout(() => {
       collapseGraceTimerRef.current = null
       hoveredRef.current = false
       setHovered(false)
-    }, 120)
+    }, 240)
   }, [])
+
+  useEffect(() => {
+    if (!/Mac/i.test(navigator.platform) || pillState !== 'idle') return
+    let disposed = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const checkPointer = async () => {
+      try {
+        const point = await invoke<[number, number] | null>('widget_pointer_position')
+        if (disposed || stateRef.current !== 'idle') return
+        // Hit-test the real pill and its visible action buttons, including their
+        // animation positions. Transparent space around them must not open it.
+        const target = point ? document.elementFromPoint(point[0], point[1]) : null
+        if (target?.closest('[data-widget-hover-target]')) expandHover()
+        else collapseHover()
+      } catch { /* Native DOM hover remains available if the window is closing. */ }
+      if (!disposed) timer = setTimeout(() => { void checkPointer() }, 100)
+    }
+    void checkPointer()
+    return () => {
+      disposed = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [pillState, expandHover, collapseHover])
 
   const triggerPromptAction = useCallback((actionId: string) => {
     if (collapseGraceTimerRef.current) { clearTimeout(collapseGraceTimerRef.current); collapseGraceTimerRef.current = null }
@@ -223,6 +248,7 @@ export default function WidgetApp() {
       clearInterval(streamIntervalRef.current)
       streamIntervalRef.current = null
     }
+    wasCardRef.current = false
     clearPartialTranscription()
     setEnhanceText('')
     transition('idle')
@@ -235,7 +261,9 @@ export default function WidgetApp() {
       streamIntervalRef.current = null
     }
     const isMic = isMicError(msg)
+    const isAccessibility = isAccessibilityError(msg)
     setErrorIsMic(isMic)
+    setErrorIsAccessibility(isAccessibility)
     setErrorMsg(isMic ? 'Mic access blocked' : msg)
     transition('error')
     if (doneRef.current) clearTimeout(doneRef.current)
@@ -254,10 +282,12 @@ export default function WidgetApp() {
   }, [returnToIdle])
 
   const cancelCapture = useCallback(async () => {
+    if (stateRef.current !== 'listening') return
+    const sessionId = sessionIdRef.current
     sessionIdRef.current = null
     clearPartialTranscription()
     try {
-      await invoke('stop_recording')
+      await invoke('stop_recording', { sessionId })
     } catch { /* ignore */ }
     returnToIdle()
   }, [clearPartialTranscription, returnToIdle])
@@ -272,6 +302,7 @@ export default function WidgetApp() {
     if (!trimmed) { showError('Select text first, then Enhance or Polish'); return }
 
     await showWidgetForActivity()
+    wasCardRef.current = true
     setEnhanceStreaming(true)
     setDoneLabel('Replaced')
     transition('enhancing')
@@ -281,7 +312,11 @@ export default function WidgetApp() {
     try {
       const state = await invoke<{ settings: AppSettingsLike }>('get_app_state')
       settings = state?.settings ?? {}
-      key = await invoke<string | null>('get_provider_key', { provider: 'groq' })
+      const configuredProvider = settings?.provider?.provider || 'groq'
+      key = await invoke<string | null>('get_provider_key', { provider: configuredProvider })
+      if (!key && configuredProvider !== 'groq') {
+        key = await invoke<string | null>('get_provider_key', { provider: 'groq' })
+      }
       if (!key) {
         key = await invoke<string | null>('get_setting', { key: 'api_key' })
       }
@@ -309,7 +344,7 @@ export default function WidgetApp() {
       const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         signal: ac.signal,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key.trim()}` },
         body: JSON.stringify(body),
       })
       if (!resp.ok || !resp.body) {
@@ -320,6 +355,23 @@ export default function WidgetApp() {
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
       let buf = ''
+
+      const processLine = (raw: string) => {
+        const line = raw.trim()
+        if (!line.startsWith('data:')) return
+        const data = line.slice(5).trim()
+        if (!data || data === '[DONE]') return
+        try {
+          const json = JSON.parse(data)
+          const delta = json?.choices?.[0]?.delta
+          const token = delta?.content ?? delta?.reasoning_content ?? delta?.reasoning
+          if (typeof token === 'string' && token) {
+            acc += token
+            setEnhanceText(acc)
+          }
+        } catch { /* SSE json split across chunks — reassembled via buf */ }
+      }
+
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
@@ -327,15 +379,13 @@ export default function WidgetApp() {
         const lines = buf.split('\n')
         buf = lines.pop() ?? ''
         for (const raw of lines) {
-          const line = raw.trim()
-          if (!line.startsWith('data:')) continue
-          const data = line.slice(5).trim()
-          if (!data || data === '[DONE]') continue
-          try {
-            const json = JSON.parse(data)
-            const delta = json?.choices?.[0]?.delta?.content
-            if (typeof delta === 'string' && delta) { acc += delta; setEnhanceText(acc) }
-          } catch { /* SSE json split across chunks — reassembled via buf */ }
+          processLine(raw)
+        }
+      }
+      buf += decoder.decode()
+      if (buf.trim()) {
+        for (const raw of buf.split('\n')) {
+          processLine(raw)
         }
       }
     } catch (e) {
@@ -370,6 +420,8 @@ export default function WidgetApp() {
   const refreshMicStatus = useCallback(async () => {
     try {
       const status = await invoke<MicrophoneStatus>('check_microphone_status')
+      // A delayed startup probe must never reset an active recording.
+      if (startingRef.current || (stateRef.current !== 'idle' && stateRef.current !== 'mic-prompt')) return status.ready
       if (status.ready) {
         setMicDetail(status.selected_device ?? status.default_device ?? 'Microphone ready')
         returnToIdle()
@@ -379,54 +431,30 @@ export default function WidgetApp() {
       transition('mic-prompt')
       return false
     } catch (e) {
+      if (startingRef.current || (stateRef.current !== 'idle' && stateRef.current !== 'mic-prompt')) return false
       setMicDetail(String(e))
       transition('mic-prompt')
       return false
     }
   }, [returnToIdle, transition])
 
-  const startCapture = useCallback(async () => {
-    await showWidgetForActivity()
-    if (stateRef.current === 'mic-prompt') {
-      void refreshMicStatus()
-      return
-    }
-    if (stateRef.current === 'done') {
-      if (doneRef.current) {
-        clearTimeout(doneRef.current)
-        doneRef.current = null
-      }
-    } else if (stateRef.current !== 'idle') {
-      return
-    }
-    try {
-      clearPartialTranscription()
-      const currentModel = await invoke<string|null>('get_setting', { key: 'model' }).catch(() => null)
-      if (currentModel) setActiveModel(currentModel)
-      const sessionId = await invoke<number>('start_recording')
-      sessionIdRef.current = sessionId
-      releaseGuardUntilRef.current = Date.now() + 140
-    } catch (e) {
-      showError(String(e))
-      return
-    }
-    recStartRef.current = Date.now()
-    transition('listening')
-  }, [clearPartialTranscription, refreshMicStatus, showError, showWidgetForActivity, transition])
-
   const stopCapture = useCallback(async () => {
+    if (startingRef.current) {
+      releasePendingRef.current = true
+      return
+    }
     if (stateRef.current !== 'listening') return
+    const sessionId = sessionIdRef.current
+    if (sessionId == null) return
     const remainingGuard = releaseGuardUntilRef.current - Date.now()
     if (remainingGuard > 0) {
       setTimeout(() => {
-        if (stateRef.current === 'listening') {
+        if (stateRef.current === 'listening' && sessionIdRef.current === sessionId) {
           void stopCapture()
         }
       }, remainingGuard)
       return
     }
-    const sessionId = sessionIdRef.current
-    if (sessionId == null) return
     const durationMs = Date.now() - recStartRef.current
     transition('processing')
     try {
@@ -460,6 +488,42 @@ export default function WidgetApp() {
       showError(message)
     }
   }, [clearPartialTranscription, returnToIdle, showError, transition])
+
+  const startCapture = useCallback(async () => {
+    if (startingRef.current) return
+    if (stateRef.current === 'mic-prompt') {
+      void refreshMicStatus()
+      return
+    }
+    if (stateRef.current === 'done') {
+      if (doneRef.current) {
+        clearTimeout(doneRef.current)
+        doneRef.current = null
+      }
+    } else if (stateRef.current !== 'idle') {
+      return
+    }
+    startingRef.current = true
+    releasePendingRef.current = false
+    try {
+      await showWidgetForActivity()
+      clearPartialTranscription()
+      const currentModel = await invoke<string|null>('get_setting', { key: 'model' }).catch(() => null)
+      if (currentModel) setActiveModel(currentModel)
+      const sessionId = await invoke<number>('start_recording')
+      sessionIdRef.current = sessionId
+      releaseGuardUntilRef.current = Date.now() + 140
+    } catch (e) {
+      showError(String(e))
+      return
+    } finally {
+      startingRef.current = false
+    }
+    recStartRef.current = Date.now()
+    transition('listening')
+    // A quick key release can arrive while the microphone is still opening.
+    if (releasePendingRef.current) void stopCapture()
+  }, [clearPartialTranscription, refreshMicStatus, showError, showWidgetForActivity, stopCapture, transition])
 
   useEffect(() => {
     queueMicrotask(() => { void refreshMicStatus() })
@@ -513,11 +577,7 @@ export default function WidgetApp() {
       listen('hotkey-pressed', startCapture),
       listen('hotkey-released', stopCapture),
       listen<string>('transcription-partial', (e) => {
-        const text = e.payload
-        setPartialTranscription(text)
-        if (text && text.trim() && (stateRef.current === 'listening' || stateRef.current === 'processing')) {
-          invoke('resize_widget', { width: 380, height: 124 }).catch(() => {})
-        }
+        if (stateRef.current === 'listening') setPartialTranscription(e.payload)
       }),
       // Prompt enhancement is captured by Rust (foreground selection) and
       // streamed live here on the widget.
@@ -558,29 +618,39 @@ export default function WidgetApp() {
     invoke('open_mic_settings').catch(() => {})
   }, [])
 
+  const handleFixAccessibility = useCallback(() => {
+    if (doneRef.current) clearTimeout(doneRef.current)
+    invoke('open_accessibility_settings').catch(() => {})
+  }, [])
+
   const hasPartialText = Boolean(partialTranscription && partialTranscription.trim())
-  const isCardState = pillState === 'enhancing' || ((isStreamingModel || hasPartialText) && (pillState === 'listening' || pillState === 'processing'))
+  const isCardState = pillState === 'enhancing' || (pillState === 'done' && wasCardRef.current) || ((isStreamingModel || hasPartialText) && (pillState === 'listening' || pillState === 'processing'))
   const isCircleState = widgetStyle === 'circle' && ['idle', 'done'].includes(pillState) && !isCardState
 
   useEffect(() => {
+    // Resizing follows presentation only. Keeping it out of transition's
+    // dependencies prevents live text/model updates from restarting mic probes
+    // and tearing down the recording listeners and completion timers.
     if (isCardState) {
-      invoke('resize_widget', { width: 380, height: 124 }).catch(() => {})
+      invoke('resize_widget', { width: 320, height: 100 }).catch(() => {})
+    } else {
+      invoke('resize_widget', { width: 320, height: 36 }).catch(() => {})
     }
   }, [isCardState])
 
   const size = useMemo(() => {
     if (isCardState) {
-      return { w: 340, h: 104 }
+      return { w: 280, h: 88 }
     }
     if (widgetStyle === 'circle') {
-      if (pillState === 'idle' || pillState === 'done') return { w: 32, h: 32 }
-      if (pillState === 'error') return { w: 190, h: 32 }
-      if (pillState === 'mic-prompt') return { w: 160, h: 32 }
-      return { w: 122, h: 32 }
+      if (pillState === 'idle' || pillState === 'done') return { w: 26, h: 26 }
+      if (pillState === 'error') return { w: 170, h: 26 }
+      if (pillState === 'mic-prompt') return { w: 144, h: 26 }
+      return { w: 100, h: 26 }
     }
-    if (pillState === 'error') return { w: 166, h: 32 }
-    if (pillState === 'mic-prompt') return { w: 160, h: 32 }
-    return { w: 122, h: 32 }
+    if (pillState === 'error') return { w: 148, h: 26 }
+    if (pillState === 'mic-prompt') return { w: 144, h: 26 }
+    return { w: 100, h: 26 }
   }, [isCardState, widgetStyle, pillState])
 
   const getBorderColor = () => {
@@ -617,15 +687,18 @@ export default function WidgetApp() {
       style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', overflow: 'hidden', pointerEvents: 'none' }}
     >
       <div
+        data-widget-hover-target
         onMouseEnter={expandHover}
         onMouseLeave={collapseHover}
-        style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto', padding: '6px 8px' }}
+        style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto', padding: '4px' }}
       >
         <SidePill
           side="left"
           label="Enhance"
           accent="#A855F7"
           show={hovered && pillState === 'idle'}
+          onMouseEnter={expandHover}
+          onMouseLeave={collapseHover}
           onTrigger={() => triggerPromptAction('enhance-prompt')}
         />
         <SidePill
@@ -633,6 +706,8 @@ export default function WidgetApp() {
           label="Polish"
           accent="#2DD4BF"
           show={hovered && pillState === 'idle'}
+          onMouseEnter={expandHover}
+          onMouseLeave={collapseHover}
           onTrigger={() => triggerPromptAction('polish')}
         />
 
@@ -640,7 +715,7 @@ export default function WidgetApp() {
         onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
         style={{
-          width: size.w, height: size.h, borderRadius: isCardState ? 16 : 99,
+          width: size.w, height: size.h, borderRadius: isCardState ? 12 : 99,
           border: `0.5px solid ${getBorderColor()}`,
           background: getBackgroundStyle(),
           backdropFilter: getBackdropFilter(), WebkitBackdropFilter: getBackdropFilter(),
@@ -657,7 +732,7 @@ export default function WidgetApp() {
         <div style={{
           position: 'absolute',
           inset: 1,
-          borderRadius: isCardState ? 16 : 99,
+          borderRadius: isCardState ? 12 : 99,
           background: 'linear-gradient(180deg, rgba(255,255,255,0.16), transparent 46%)',
           pointerEvents: 'none',
         }} />
@@ -665,7 +740,7 @@ export default function WidgetApp() {
           <div style={{
             width: '100%', height: '100%',
             display: 'flex', flexDirection: 'column',
-            padding: '12px 14px', position: 'relative',
+            padding: '8px 10px', position: 'relative',
             fontFamily: "'Noto Sans', sans-serif",
             opacity: contentVisible ? 1 : 0,
             transition: 'opacity 80ms ease',
@@ -676,10 +751,10 @@ export default function WidgetApp() {
               ref={scrollRef}
               style={{
                 flex: 1, minHeight: 0, overflowY: 'auto',
-                color: '#E7E3DB', fontSize: 13, lineHeight: 1.45,
+                color: '#E7E3DB', fontSize: 12, lineHeight: 1.4,
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 fontStyle: 'italic',
-                paddingBottom: 4,
+                paddingBottom: 2,
                 textAlign: 'left',
               }}
             >
@@ -719,7 +794,7 @@ export default function WidgetApp() {
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 borderTop: '0.5px solid rgba(255,255,255,0.06)',
-                paddingTop: 8, marginTop: 4, flexShrink: 0,
+                paddingTop: 5, marginTop: 3, flexShrink: 0,
               }}
               onMouseDown={(e) => e.stopPropagation()} // Prevent dragging on buttons click
             >
@@ -757,11 +832,13 @@ export default function WidgetApp() {
               {/* Close Button */}
               <button
                 className="mv-btn"
+                disabled={pillState === 'processing'}
+                aria-label={pillState === 'enhancing' ? 'Cancel enhancement' : 'Cancel recording'}
                 onClick={pillState === 'enhancing' ? cancelEnhance : cancelCapture}
                 style={{
                   background: 'transparent', border: 'none', color: '#8F8B82',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 2, transition: 'color 150ms ease',
+                  width: 18, height: 18, padding: 2, transition: 'color 150ms ease',
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.color = '#E7E3DB'}
                 onMouseLeave={(e) => e.currentTarget.style.color = '#8F8B82'}
@@ -776,8 +853,8 @@ export default function WidgetApp() {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: isCircleState ? 0 : 6,
-            padding: isCircleState ? '0' : '0 10px',
+            gap: isCircleState ? 0 : 5,
+            padding: isCircleState ? '0' : '0 7px',
             opacity: contentVisible ? 1 : 0,
             transition: 'opacity 80ms ease',
             justifyContent: 'center',
@@ -788,7 +865,7 @@ export default function WidgetApp() {
             {isCircleState ? (
               <>
                 {pillState === 'idle' && (
-                  <img src="/logo-prompt.png" alt="" width="16" height="16" style={{ borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />
+                  <img src="/logo-prompt.png" alt="" width="14" height="14" style={{ borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
                 )}
                 {pillState === 'done' && (
                   <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
@@ -802,7 +879,7 @@ export default function WidgetApp() {
                 {pillState === 'listening'  && <ListeningContent color={COLOR.listening} partialText={partialTranscription} widgetStyle={widgetStyle} />}
                 {pillState === 'processing' && <SpinnerContent color={COLOR.processing} label="Transcribing…" widgetStyle={widgetStyle} />}
                 {pillState === 'done'       && <CheckContent color={COLOR.done} label={doneLabel} widgetStyle={widgetStyle} />}
-                {pillState === 'error'      && <ErrorContent color={COLOR.error} label={errorMsg} isMic={errorIsMic} onFix={handleFixMic} widgetStyle={widgetStyle} />}
+                {pillState === 'error'      && <ErrorContent color={COLOR.error} label={errorMsg} isMic={errorIsMic} isAccessibility={errorIsAccessibility} onFix={errorIsAccessibility ? handleFixAccessibility : handleFixMic} widgetStyle={widgetStyle} />}
                 {pillState === 'mic-prompt' && <MicPromptContent detail={micDetail} onGrant={handleGrantMic} widgetStyle={widgetStyle} />}
               </>
             )}
@@ -848,18 +925,20 @@ export default function WidgetApp() {
   )
 }
 
-function SidePill({ side, label, accent, show, onTrigger }: {
+function SidePill({ side, label, accent, show, onMouseEnter, onMouseLeave, onTrigger }: {
   side: 'left' | 'right'
   label: string
   accent: string
   show: boolean
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
   onTrigger: () => void
 }) {
   const isLeft = side === 'left'
   const anchor = isLeft ? { right: '100%' } : { left: '100%' }
-  const gap = 8
+  const gap = 4
 
-  // Visible position: docked with 8px gap beside the center pill
+  // Keep actions close enough to cross the gap before hover collapses.
   const shownX = isLeft ? -gap : gap
   // Hidden position: tucked neatly behind the central pill
   const hiddenX = isLeft ? 54 : -54
@@ -867,6 +946,8 @@ function SidePill({ side, label, accent, show, onTrigger }: {
 
   return (
     <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{
         position: 'absolute',
         top: '50%',
@@ -883,15 +964,17 @@ function SidePill({ side, label, accent, show, onTrigger }: {
     >
       <button
         className={`mv-side-pill mv-side-pill-${side}`}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
         onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
         onClick={(e) => { e.stopPropagation(); onTrigger() }}
         title={`${label} selected text`}
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          height: 30,
-          padding: '0 12px',
+          gap: 4,
+          height: 24,
+          padding: '0 8px',
           borderRadius: 99,
           border: `0.5px solid ${accent}55`,
           background: `linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.09)), rgba(14,14,16,0.85)`,
@@ -906,8 +989,8 @@ function SidePill({ side, label, accent, show, onTrigger }: {
         }}
       >
         <svg
-          width="12"
-          height="12"
+          width="10"
+          height="10"
           viewBox="0 0 24 24"
           fill="none"
           stroke={accent}
@@ -931,7 +1014,7 @@ function SidePill({ side, label, accent, show, onTrigger }: {
         </svg>
         <span style={{
           color: '#F3EEE6',
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: 600,
           letterSpacing: '0.02em',
           fontFamily: "'Noto Sans',sans-serif",
@@ -948,10 +1031,10 @@ function IdleContent({ widgetStyle }: { widgetStyle?: string }) {
   const isInvisible = widgetStyle === 'invisible'
   return (
     <>
-      <img src="/logo-prompt.png" alt="" width="16" height="16" style={{ borderRadius:5, objectFit:'cover', flexShrink:0 }} />
+      <img src="/logo-prompt.png" alt="" width="14" height="14" style={{ borderRadius:4, objectFit:'cover', flexShrink:0 }} />
       <span style={{
         color: isInvisible ? '#F3EEE6' : '#B8B3AA',
-        fontSize:11,
+        fontSize:10,
         fontWeight:550,
         letterSpacing:'0.02em',
         fontFamily:"'Noto Sans',sans-serif",
@@ -969,7 +1052,7 @@ function ListeningContent({ color, partialText, widgetStyle }: { color: string; 
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 7,
+      gap: 5,
       width: '100%',
       minWidth: 0,
       justifyContent: hasText ? 'flex-start' : 'center',
@@ -1014,7 +1097,7 @@ function ListeningContent({ color, partialText, widgetStyle }: { color: string; 
       ) : (
         <span style={{
           color,
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: 600,
           fontFamily: "'Noto Sans',sans-serif",
           flexShrink: 0,
@@ -1036,19 +1119,19 @@ function SpinnerContent({ color, label, widgetStyle }: { color: string; label: R
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 7,
+      gap: 5,
       width: '100%',
       minWidth: 0,
       justifyContent: isCustomText ? 'flex-start' : 'center',
       padding: isCustomText ? '0 4px' : '0',
     }}>
-      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ animation: 'spin 0.8s linear infinite', flexShrink: 0 }}>
+      <svg width="11" height="11" viewBox="0 0 14 14" fill="none" style={{ animation: 'spin 0.8s linear infinite', flexShrink: 0 }}>
         <circle cx="7" cy="7" r="5.5" stroke="#2C2C2C" strokeWidth="1.5" />
         <path d="M7 1.5A5.5 5.5 0 0 1 12.5 7" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
       <span style={{
         color: isCustomText ? '#F3EEE6' : color,
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: 600,
         fontFamily: "'Noto Sans',sans-serif",
         minWidth: 0,
@@ -1072,7 +1155,7 @@ function CheckContent({ color, label, widgetStyle }: { color:string; label:strin
       </svg>
       <span style={{
         color,
-        fontSize:11,
+        fontSize:10,
         fontWeight:600,
         fontFamily:"'Noto Sans',sans-serif",
         textShadow: isInvisible ? '0 1px 2px rgba(0,0,0,0.45)' : '0 1px 2px rgba(0,0,0,0.35)'
@@ -1081,7 +1164,7 @@ function CheckContent({ color, label, widgetStyle }: { color:string; label:strin
   )
 }
 
-function ErrorContent({ color, label, isMic, onFix, widgetStyle }: { color:string; label:string; isMic:boolean; onFix:()=>void; widgetStyle?: string }) {
+function ErrorContent({ color, label, isMic, isAccessibility, onFix, widgetStyle }: { color:string; label:string; isMic:boolean; isAccessibility:boolean; onFix:()=>void; widgetStyle?: string }) {
   const isInvisible = widgetStyle === 'invisible'
   return (
     <div style={{ display:'flex', alignItems:'center', gap:6, width:'100%', justifyContent:'center' }}>
@@ -1101,8 +1184,8 @@ function ErrorContent({ color, label, isMic, onFix, widgetStyle }: { color:strin
         textOverflow:'ellipsis',
         whiteSpace:'nowrap',
         textShadow: isInvisible ? '0 1px 2px rgba(0,0,0,0.45)' : '0 1px 2px rgba(0,0,0,0.35)'
-      }}>{label}</span>
-      {isMic && (
+      }} title={label}>{label}</span>
+      {(isMic || isAccessibility) && (
         <button
           className="mv-btn"
           onMouseDown={(e) => e.stopPropagation()}

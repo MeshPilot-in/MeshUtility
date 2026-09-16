@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+#[cfg(target_os = "windows")]
 use std::process::Command;
 
 use tauri::{
@@ -584,11 +585,12 @@ fn position_widget_bottom_center(app: &tauri::AppHandle) {
         return;
     };
 
+    let scale = monitor.scale_factor();
     let monitor_position = monitor.position();
     let monitor_size = monitor.size();
-    let widget_size = widget.outer_size().unwrap_or_else(|_| tauri::PhysicalSize::new(380, 48));
+    let widget_size = widget.outer_size().unwrap_or_else(|_| tauri::PhysicalSize::new(320, 36));
     let x = monitor_position.x + ((monitor_size.width.saturating_sub(widget_size.width)) / 2) as i32;
-    let y = monitor_position.y + monitor_size.height.saturating_sub(widget_size.height + WIDGET_BOTTOM_MARGIN_PX) as i32;
+    let y = monitor_position.y + monitor_size.height.saturating_sub(widget_size.height + (WIDGET_BOTTOM_MARGIN_PX as f64 * scale).round() as u32) as i32;
     let _ = widget.set_position(PhysicalPosition::new(x, y));
 }
 
@@ -635,8 +637,14 @@ fn resize_widget(app: AppHandle, width: f64, height: f64) -> Result<(), String> 
         let monitor_position = monitor.position();
         let monitor_size = monitor.size();
 
-        let curr_size = widget.outer_size().unwrap_or_else(|_| tauri::PhysicalSize::new(380, 48));
+        let curr_size = widget.outer_size().unwrap_or_else(|_| tauri::PhysicalSize::new(320, 36));
         let curr_pos = widget.outer_position().unwrap_or_else(|_| tauri::PhysicalPosition::new(0, 0));
+
+        let delta_w = (curr_size.width as i32 - new_phys_w as i32).abs();
+        let delta_h = (curr_size.height as i32 - new_phys_h as i32).abs();
+        if delta_w <= 2 && delta_h <= 2 {
+            return Ok(());
+        }
 
         let default_x = monitor_position.x + ((monitor_size.width.saturating_sub(new_phys_w)) / 2) as i32;
         let default_y = monitor_position.y + monitor_size.height.saturating_sub(new_phys_h + (WIDGET_BOTTOM_MARGIN_PX as f64 * scale).round() as u32) as i32;
@@ -650,7 +658,8 @@ fn resize_widget(app: AppHandle, width: f64, height: f64) -> Result<(), String> 
             (default_x, default_y)
         } else {
             let cx = curr_pos.x + ((curr_size.width as i32 - new_phys_w as i32) / 2);
-            let cy = (curr_pos.y + (curr_size.height as i32 - new_phys_h as i32))
+            let curr_bottom = curr_pos.y + curr_size.height as i32;
+            let cy = (curr_bottom - new_phys_h as i32)
                 .clamp(monitor_position.y, monitor_position.y + monitor_size.height.saturating_sub(new_phys_h + 10) as i32);
             (cx, cy)
         };
@@ -764,6 +773,36 @@ fn hide_widget(app: AppHandle) -> Result<(), String> {
         widget.hide().map_err(|err| format!("Failed to hide widget: {err}"))?;
     }
     Ok(())
+}
+
+/// WKWebView may suppress DOM hover events while another app is active.
+/// Read the pointer without activating the widget or installing a global event
+/// tap. Return CSS coordinates only inside this visible, borderless window.
+#[tauri::command]
+async fn widget_pointer_position(app: AppHandle) -> Result<Option<(f64, f64)>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let widget = app.get_webview_window("widget")
+            .ok_or_else(|| "Widget window is unavailable.".to_string())?;
+        if !widget.is_visible().map_err(|e| e.to_string())? {
+            return Ok(None);
+        }
+        let pointer = widget.cursor_position().map_err(|e| e.to_string())?;
+        let origin = widget.inner_position().map_err(|e| e.to_string())?;
+        let size = widget.inner_size().map_err(|e| e.to_string())?;
+        let scale = widget.scale_factor().map_err(|e| e.to_string())?;
+        let x = pointer.x - origin.x as f64;
+        let y = pointer.y - origin.y as f64;
+        if x < 0.0 || y < 0.0 || x >= size.width as f64 || y >= size.height as f64 {
+            return Ok(None);
+        }
+        Ok(Some((x / scale, y / scale)))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok(None)
+    }
 }
 
 #[tauri::command]
@@ -1040,7 +1079,62 @@ fn hotkey_is_physically_down(hotkey: &str) -> bool {
     })
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+fn macos_key_is_down(part: &str) -> bool {
+    extern "C" {
+        fn CGEventSourceKeyState(state_id: i32, key: u16) -> bool;
+    }
+    const COMBINED_SESSION: i32 = 0;
+    let p = part.trim().to_ascii_lowercase();
+    match p.as_str() {
+        "alt" | "option" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 58) || CGEventSourceKeyState(COMBINED_SESSION, 61) },
+        "cmd" | "command" | "super" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 55) || CGEventSourceKeyState(COMBINED_SESSION, 54) },
+        "ctrl" | "control" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 59) || CGEventSourceKeyState(COMBINED_SESSION, 62) },
+        "shift" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 56) || CGEventSourceKeyState(COMBINED_SESSION, 60) },
+        "space" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 49) },
+        "enter" | "return" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 36) },
+        "tab" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 48) },
+        "escape" | "esc" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 53) },
+        "a" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 0) },
+        "b" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 11) },
+        "c" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 8) },
+        "d" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 2) },
+        "e" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 14) },
+        "f" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 3) },
+        "g" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 5) },
+        "h" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 4) },
+        "i" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 34) },
+        "j" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 38) },
+        "k" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 40) },
+        "l" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 37) },
+        "m" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 46) },
+        "n" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 45) },
+        "o" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 31) },
+        "p" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 35) },
+        "q" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 12) },
+        "r" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 15) },
+        "s" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 1) },
+        "t" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 17) },
+        "u" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 32) },
+        "v" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 9) },
+        "w" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 13) },
+        "x" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 7) },
+        "y" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 16) },
+        "z" => unsafe { CGEventSourceKeyState(COMBINED_SESSION, 6) },
+        _ => false,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn hotkey_is_physically_down(hotkey: &str) -> bool {
+    let parts: Vec<&str> = hotkey.split('+').collect();
+    if parts.is_empty() {
+        return false;
+    }
+    parts.iter().all(|part| macos_key_is_down(part))
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn hotkey_is_physically_down(_hotkey: &str) -> bool {
     false
 }
@@ -1387,6 +1481,25 @@ fn main() {
                     }
                 }
             }
+            #[cfg(target_os = "macos")]
+            if let Some(widget) = app.get_webview_window("widget") {
+                if let Ok(ns_win) = widget.ns_window() {
+                    unsafe {
+                        use objc2::{msg_send, runtime::AnyObject};
+                        let win = ns_win as *mut AnyObject;
+                        let style_mask: usize = msg_send![win, styleMask];
+                        let _: () = msg_send![win, setStyleMask: style_mask | (1usize << 3) | (1usize << 7)];
+                        let behavior: usize = msg_send![win, collectionBehavior];
+                        let _: () = msg_send![win, setCollectionBehavior: behavior | (1usize << 0) | (1usize << 4) | (1usize << 6)];
+                        let _: () = msg_send![win, setOpaque: false];
+                        if let Some(cls) = objc2::runtime::AnyClass::get("NSColor") {
+                            let clear_color: *mut AnyObject = msg_send![cls, clearColor];
+                            let _: () = msg_send![win, setBackgroundColor: clear_color];
+                        }
+                        let _: () = msg_send![win, setHasShadow: false];
+                    }
+                }
+            }
             #[cfg(target_os = "windows")]
             {
                 let app_handle = app.handle().clone();
@@ -1434,13 +1547,28 @@ fn main() {
                 (mode, hotkey, model, language_mode)
             };
 
-            let saved_model_path = saved_model_file.map(|f| {
-                if f == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8" {
-                    transcription::parakeet_bundle_dir().to_string_lossy().to_string()
+            let saved_model_path = saved_model_file.and_then(|f| {
+                let resolved = if f == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8" || f == "nemotron-speech-streaming-en" {
+                    transcription::parakeet_bundle_dir()
+                } else if f == "canary-180m-flash-onnx" || f == "moonshine-medium-onnx" {
+                    transcription::canary_bundle_dir()
                 } else {
-                    audio::models_dir().join(&f).to_string_lossy().to_string()
+                    audio::models_dir().join(&f)
+                };
+                if resolved.exists() {
+                    Some(resolved.to_string_lossy().to_string())
+                } else {
+                    None
                 }
-            }).filter(|p| std::path::Path::new(p).exists());
+            }).or_else(|| {
+                if transcription::parakeet_bundle_ready() {
+                    Some(transcription::parakeet_bundle_dir().to_string_lossy().to_string())
+                } else if transcription::canary_bundle_ready() {
+                    Some(transcription::canary_bundle_dir().to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            });
 
             let is_recording = Arc::new(Mutex::new(false));
             let recording_session_id = Arc::new(Mutex::new(0_u64));
@@ -1649,6 +1777,7 @@ fn main() {
             audio::get_audio_devices,
             audio::check_microphone_status,
             audio::open_mic_settings,
+            audio::open_accessibility_settings,
             db::get_history,
             db::get_history_audio,
             db::get_stats,
@@ -1669,6 +1798,7 @@ fn main() {
             show_main_window,
             show_widget,
             hide_widget,
+            widget_pointer_position,
             resize_widget,
             trigger_prompt_action,
             set_widget_enabled,
@@ -1698,4 +1828,3 @@ fn main() {
         .expect("error while running tauri application");
 }
 // Dev watcher rebuild test comment
-

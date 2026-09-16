@@ -107,18 +107,24 @@ function handleDragPointerDown(e: React.PointerEvent<HTMLDivElement>, appWindow:
 async function winClose(appWindow: ReturnType<typeof getCurrentWindow> | null) {
   if (!appWindow) return
   try { await appWindow.close() } catch { /* ignore */ }
-  setTimeout(() => { appWindow.destroy?.().catch(() => {}) }, 200)
 }
 
-function WinButton({ label, onClick, danger, children }: {
+async function winToggleMaximize(appWindow: ReturnType<typeof getCurrentWindow> | null) {
+  if (!appWindow) return
+  if (await appWindow.isMaximized()) await appWindow.unmaximize()
+  else await appWindow.maximize()
+}
+
+function WinButton({ label, onClick, danger, variant, children }: {
   label: string
   onClick: () => void
   danger?: boolean
+  variant?: 'close' | 'minimize' | 'zoom'
   children: React.ReactNode
 }) {
   return (
     <button
-      className={danger ? 'utility-win-button danger' : 'utility-win-button'}
+      className={`utility-win-button${danger ? ' danger' : ''}${variant ? ` utility-mac-${variant}` : ''}`}
       title={label}
       aria-label={label}
       onMouseDown={(e) => e.stopPropagation()}
@@ -134,6 +140,7 @@ function WinButton({ label, onClick, danger, children }: {
 }
 
 export default function App() {
+  const isMac = /Mac/i.test(navigator.platform)
   const [view, setView] = useState<View>(getInitialView)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const appWindowRef = useRef<ReturnType<typeof getCurrentWindow> | null>(null)
@@ -177,12 +184,29 @@ export default function App() {
   return (
     <div className="utility-shell">
       <div
-        className="utility-titlebar"
+        className={isMac ? 'utility-titlebar utility-titlebar-mac' : 'utility-titlebar'}
         data-tauri-drag-region
         onMouseDown={handleBarMouseDown}
         onPointerDown={(e) => handleDragPointerDown(e, appWindowRef.current)}
       >
         <div className="utility-titlebar-left" data-tauri-drag-region>
+          {isMac && <div className="utility-mac-controls">
+            <WinButton label="Close" variant="close" onClick={() => void winClose(appWindowRef.current)}>
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                <path d="m2 2 4 4m0-4L2 6" stroke="currentColor" strokeWidth="1.1" />
+              </svg>
+            </WinButton>
+            <WinButton label="Minimize" variant="minimize" onClick={() => { void appWindowRef.current?.minimize() }}>
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                <path d="M1.5 4h5" stroke="currentColor" strokeWidth="1.1" />
+              </svg>
+            </WinButton>
+            <WinButton label="Maximize" variant="zoom" onClick={() => { void winToggleMaximize(appWindowRef.current) }}>
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                <path d="M1.5 4h5M4 1.5v5" stroke="currentColor" strokeWidth="1.1" />
+              </svg>
+            </WinButton>
+          </div>}
           <button
             className={sidebarCollapsed ? 'utility-icon-button' : 'utility-icon-button active'}
             title={sidebarCollapsed ? 'Show utility navigation' : 'Hide utility navigation'}
@@ -201,7 +225,7 @@ export default function App() {
           MeshUtility Suite
         </span>
 
-        <div className="utility-window-controls" data-tauri-drag-region>
+        {!isMac && <div className="utility-window-controls" data-tauri-drag-region>
           <div className="utility-window-button-group">
             <WinButton label="Minimize" onClick={() => appWindowRef.current?.minimize()}>
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
@@ -210,12 +234,7 @@ export default function App() {
             </WinButton>
             <WinButton
               label="Maximize"
-              onClick={async () => {
-                const appWindow = appWindowRef.current
-                if (!appWindow) return
-                if (await appWindow.isMaximized()) await appWindow.unmaximize()
-                else await appWindow.maximize()
-              }}
+              onClick={() => { void winToggleMaximize(appWindowRef.current) }}
             >
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
                 <rect x="2.6" y="2.6" width="6.8" height="6.8" rx="1.4" stroke="currentColor" strokeWidth="1.3" />
@@ -231,7 +250,7 @@ export default function App() {
               </svg>
             </WinButton>
           </div>
-        </div>
+        </div>}
       </div>
 
       <div className={sidebarCollapsed ? 'utility-body sidebar-collapsed' : 'utility-body'}>

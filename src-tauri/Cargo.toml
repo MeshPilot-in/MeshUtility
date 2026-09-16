@@ -14,7 +14,7 @@ whisper-vulkan = ["transcribe-rs/whisper-vulkan"]
 tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.0.0", features = ["tray-icon"] }
+tauri = { version = "2.0.0", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-global-shortcut = "2.0.0"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-deep-link = "2"
@@ -57,3 +57,8 @@ windows = { version = "0.58", features = [
     "Win32_System_Memory",
     "Win32_Security_Cryptography",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2.0.0", features = ["macos-private-api"] }
+core-graphics = "0.23"
+objc2 = "0.5"

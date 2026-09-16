@@ -31,8 +31,8 @@ static LAST_RMS: Mutex<f32> = Mutex::new(0.0);
 
 const MAX_CAPTURE_SECONDS: usize = 600;
 const PREROLL_MS: usize = 240;
-const START_RMS_THRESHOLD: f32 = 0.004;
-const END_RMS_THRESHOLD: f32 = 0.003;
+const START_RMS_THRESHOLD: f32 = 0.002;
+const END_RMS_THRESHOLD: f32 = 0.0015;
 const MIN_SPEECH_MS: usize = 90;
 const TRAILING_SILENCE_MS: usize = 360;
 
@@ -52,6 +52,49 @@ pub fn models_dir() -> std::path::PathBuf {
     std::fs::create_dir_all(&p).ok(); p
 }
 
+pub fn resolve_active_model_path(state: &crate::AppState) -> Option<String> {
+    if let Some(path) = state.selected_model.lock().unwrap().as_ref() {
+        if std::path::Path::new(path).exists() {
+            return Some(path.clone());
+        }
+    }
+
+    let db_model = crate::db::DB_CONN.lock().ok().and_then(|conn| {
+        conn.query_row("SELECT value FROM settings WHERE key='model'", [], |r| r.get::<_, String>(0)).ok()
+    });
+
+    let resolved = db_model.and_then(|f| {
+        let path = if f == "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8" || f == "nemotron-speech-streaming-en" {
+            crate::transcription::parakeet_bundle_dir()
+        } else if f == "canary-180m-flash-onnx" || f == "moonshine-medium-onnx" {
+            crate::transcription::canary_bundle_dir()
+        } else {
+            models_dir().join(&f)
+        };
+        if path.exists() {
+            Some(path.to_string_lossy().to_string())
+        } else {
+            None
+        }
+    }).or_else(|| {
+        if crate::transcription::parakeet_bundle_ready() {
+            Some(crate::transcription::parakeet_bundle_dir().to_string_lossy().to_string())
+        } else if crate::transcription::canary_bundle_ready() {
+            Some(crate::transcription::canary_bundle_dir().to_string_lossy().to_string())
+        } else {
+            None
+        }
+    });
+
+    if let Some(ref p) = resolved {
+        if let Ok(mut lock) = state.selected_model.lock() {
+            *lock = Some(p.clone());
+        }
+    }
+
+    resolved
+}
+
 #[tauri::command]
 pub fn open_mic_settings() -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -62,7 +105,29 @@ pub fn open_mic_settings() -> Result<(), String> {
             .map_err(|e| format!("Could not open Windows microphone settings: {}", e))?;
         Ok(())
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("/usr/bin/open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+            .spawn()
+            .map_err(|e| format!("Could not open macOS microphone settings: {}", e))?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_accessibility_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("/usr/bin/open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .spawn()
+            .map_err(|e| format!("Could not open macOS Accessibility settings: {}", e))?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
     Ok(())
 }
 
@@ -93,7 +158,7 @@ pub fn check_microphone_status() -> MicrophoneStatus {
                 ready: false,
                 selected_device: None,
                 default_device,
-                error: Some("No microphone found. Connect a microphone or enable one in Windows Sound settings.".into()),
+                error: Some("No microphone found. Connect a microphone or enable an input device in system settings.".into()),
             };
         }
     };
@@ -111,42 +176,18 @@ pub fn check_microphone_status() -> MicrophoneStatus {
         }
     };
 
-    match probe_input_stream(&device, &config) {
-        Ok(()) => MicrophoneStatus {
-            available: true,
-            ready: true,
-            selected_device,
-            default_device,
-            error: None,
-        },
-        Err(error) => MicrophoneStatus {
-            available: true,
-            ready: false,
-            selected_device,
-            default_device,
-            error: Some(error),
-        },
+    // Do not open a temporary audio stream here. On macOS, constructing and
+    // playing a probe stream can race the real capture stream and repeatedly
+    // trigger the microphone consent dialog. The recorder below performs the
+    // one actual access request and reports any permission/device failure.
+    let _ = config;
+    MicrophoneStatus {
+        available: true,
+        ready: true,
+        selected_device,
+        default_device,
+        error: None,
     }
-}
-
-fn probe_input_stream(device: &cpal::Device, cfg: &cpal::SupportedStreamConfig) -> Result<(), String> {
-    let stream_config: cpal::StreamConfig = cfg.clone().into();
-    let err = |e| eprintln!("[MeshVoice] microphone probe: {}", e);
-    let stream = match cfg.sample_format() {
-        cpal::SampleFormat::F32 => device.build_input_stream(&stream_config, |_data: &[f32], _| {}, err, None),
-        cpal::SampleFormat::I16 => device.build_input_stream(&stream_config, |_data: &[i16], _| {}, err, None),
-        cpal::SampleFormat::U16 => device.build_input_stream(&stream_config, |_data: &[u16], _| {}, err, None),
-        cpal::SampleFormat::I8 => device.build_input_stream(&stream_config, |_data: &[i8], _| {}, err, None),
-        cpal::SampleFormat::U8 => device.build_input_stream(&stream_config, |_data: &[u8], _| {}, err, None),
-        cpal::SampleFormat::I32 => device.build_input_stream(&stream_config, |_data: &[i32], _| {}, err, None),
-        cpal::SampleFormat::U32 => device.build_input_stream(&stream_config, |_data: &[u32], _| {}, err, None),
-        cpal::SampleFormat::F64 => device.build_input_stream(&stream_config, |_data: &[f64], _| {}, err, None),
-        _ => return Err("Unsupported microphone sample format.".into()),
-    }.map_err(|e| format_microphone_error("Microphone stream creation failed", e))?;
-
-    stream.play().map_err(|e| format_microphone_error("Microphone access failed", e))?;
-    std::thread::sleep(std::time::Duration::from_millis(220));
-    Ok(())
 }
 
 fn get_selected_device() -> Option<cpal::Device> {
@@ -344,7 +385,9 @@ pub async fn start_recording(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<u64, String> {
-    if *state.is_recording.lock().unwrap() {
+    // Serialize start/stop and buffer ownership, including duplicate hotkeys.
+    let mut is_recording = state.is_recording.lock().unwrap();
+    if *is_recording {
         return Ok(*state.recording_session_id.lock().unwrap());
     }
     AUDIO_BUFFER.lock().unwrap().clear();
@@ -355,10 +398,11 @@ pub async fn start_recording(
         *id
     };
     CAPTURE_ACTIVE.store(true, Ordering::SeqCst);
-    *state.is_recording.lock().unwrap() = true;
+    *is_recording = true;
+    drop(is_recording);
 
     // Only run live background streaming for models that support streaming architecture (Nemotron / Parakeet / Canary / Moonshine)
-    let model_path_opt = state.selected_model.lock().unwrap().clone();
+    let model_path_opt = resolve_active_model_path(&state);
     let is_streaming_supported = model_path_opt.as_ref().map_or(false, |m| {
         let lower = m.to_lowercase();
         lower.contains("nemotron") || lower.contains("parakeet") || lower.contains("moonshine") || lower.contains("canary") || std::path::Path::new(m).is_dir()
@@ -384,24 +428,23 @@ pub async fn start_recording(
                 }
 
                 let rate = *DEVICE_SAMPLE_RATE.lock().unwrap();
-                if let Some(samples) = trim_voice_activity(&raw, rate) {
-                    let samples_16k = resample_to_16k(&samples, rate);
-                    if samples_16k.len() >= 4000 && CAPTURE_ACTIVE.load(Ordering::SeqCst) {
-                        if let Some(model_path) = model_path_opt.as_ref() {
-                            use tauri::Manager;
-                            if let Some(voice_engine) = app_handle.try_state::<crate::engine::VoiceEngine>() {
-                                let engine = voice_engine.inner().clone();
-                                let model_p = model_path.clone();
-                                let samples_vec = samples_16k.clone();
-                                let res = tokio::task::spawn_blocking(move || {
-                                    engine.try_transcribe(&model_p, samples_vec, "auto", None)
-                                }).await;
-                                if let Ok(Ok(Some(partial))) = res {
-                                    let trimmed = partial.trim();
-                                    if !trimmed.is_empty() && CAPTURE_ACTIVE.load(Ordering::SeqCst) && *is_recording_flag.lock().unwrap() && *recording_session_flag.lock().unwrap() == session_id {
-                                        let clean_text = normalize_technical_transcript(trimmed);
-                                        let _ = app_handle.emit("transcription-partial", clean_text);
-                                    }
+                let samples = extract_streaming_speech(&raw, rate);
+                let samples_16k = resample_to_16k(&samples, rate);
+                if samples_16k.len() >= 4000 && CAPTURE_ACTIVE.load(Ordering::SeqCst) {
+                    if let Some(model_path) = model_path_opt.as_ref() {
+                        use tauri::Manager;
+                        if let Some(voice_engine) = app_handle.try_state::<crate::engine::VoiceEngine>() {
+                            let engine = voice_engine.inner().clone();
+                            let model_p = model_path.clone();
+                            let samples_vec = samples_16k.clone();
+                            let res = tokio::task::spawn_blocking(move || {
+                                engine.try_transcribe(&model_p, samples_vec, "auto", None)
+                            }).await;
+                            if let Ok(Ok(Some(partial))) = res {
+                                let trimmed = partial.trim();
+                                if !trimmed.is_empty() && CAPTURE_ACTIVE.load(Ordering::SeqCst) && *is_recording_flag.lock().unwrap() && *recording_session_flag.lock().unwrap() == session_id {
+                                    let clean_text = normalize_technical_transcript(trimmed);
+                                    let _ = app_handle.emit("transcription-partial", clean_text);
                                 }
                             }
                         }
@@ -417,10 +460,29 @@ pub async fn start_recording(
 }
 
 #[tauri::command]
-pub fn stop_recording(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
-    CAPTURE_ACTIVE.store(false, Ordering::SeqCst);
-    *state.is_recording.lock().unwrap() = false;
+pub fn stop_recording(state: tauri::State<'_, crate::AppState>, session_id: Option<u64>) -> Result<(), String> {
+    let mut is_recording = state.is_recording.lock().unwrap();
+    stop_capture_session(&mut is_recording, *state.recording_session_id.lock().unwrap(), session_id, &CAPTURE_ACTIVE)?;
     AUDIO_BUFFER.lock().unwrap().clear();
+    Ok(())
+}
+
+fn stop_capture_session(
+    is_recording: &mut bool,
+    current_session_id: u64,
+    stop_session_id: Option<u64>,
+    active: &AtomicBool,
+) -> Result<(), String> {
+    // Validate before touching the microphone: a late stop belongs to the old
+    // session and must not turn off capture for the new one.
+    if stop_session_id.is_some_and(|id| id != current_session_id) {
+        return Err("Stale recording stop ignored.".into());
+    }
+    if !*is_recording {
+        return Err("Recording already stopped.".into());
+    }
+    active.store(false, Ordering::SeqCst);
+    *is_recording = false;
     Ok(())
 }
 
@@ -432,27 +494,17 @@ pub async fn stop_recording_and_transcribe(
     access_token: Option<String>,
     session_id: Option<u64>,
 ) -> Result<String, String> {
-    CAPTURE_ACTIVE.store(false, Ordering::SeqCst);
-    if let Some(stop_session_id) = session_id {
-        let current_session_id = *state.recording_session_id.lock().unwrap();
-        if stop_session_id != current_session_id {
-            return Err("Stale recording stop ignored.".into());
-        }
-    }
-    {
+    let (raw, rate) = {
         let mut is_recording = state.is_recording.lock().unwrap();
-        if !*is_recording {
-            return Err("Recording already stopped.".into());
-        }
-        *is_recording = false;
-    }
-
-    let raw = AUDIO_BUFFER.lock().unwrap().clone();
-    let rate = *DEVICE_SAMPLE_RATE.lock().unwrap();
+        stop_capture_session(&mut is_recording, *state.recording_session_id.lock().unwrap(), session_id, &CAPTURE_ACTIVE)?;
+        // Take the completed audio before another session can clear the buffer.
+        let raw = std::mem::take(&mut *AUDIO_BUFFER.lock().unwrap());
+        (raw, *DEVICE_SAMPLE_RATE.lock().unwrap())
+    };
 
     if raw.len() < 800 {
         if duration_ms > 1000 {
-            return Err("Microphone access appears blocked. Enable microphone access for desktop apps in Windows Privacy settings, then try again.".into());
+            return Err("No microphone audio received. Check the selected input and microphone permission in system settings, then try again.".into());
         } else {
             return Err("Recording too short. Hold to talk.".into());
         }
@@ -515,7 +567,7 @@ pub async fn stop_recording_and_transcribe(
 
     // Inject into active app
     let final_text = crate::injection::apply_dictionary(&text)?;
-    crate::injection::inject_text(&final_text)?;
+    crate::injection::inject_text_for_app(&app_handle, &final_text)?;
 
     let wc = final_text.split_whitespace().count() as i64;
     let complete = TranscriptionComplete {
@@ -602,7 +654,7 @@ async fn transcribe(
 
     use tauri::Manager;
 
-    let model_path = state.selected_model.lock().unwrap().clone();
+    let model_path = resolve_active_model_path(state);
     let Some(model) = model_path else {
         return Err("Local mode requires a downloaded model. Open Speech Models and download Nemotron 3.5 or a Whisper model.".into());
     };
@@ -709,10 +761,17 @@ fn normalize_technical_transcript(text: &str) -> String {
 }
 
 fn format_microphone_error(prefix: &str, error: impl std::fmt::Display) -> String {
+    #[cfg(target_os = "macos")]
+    let guidance = "Enable MeshUtility under System Settings > Privacy & Security > Microphone, confirm the selected input device is active, then retry.";
+    #[cfg(target_os = "windows")]
+    let guidance = "Enable microphone access for desktop apps in Windows Privacy settings, confirm the selected input device is active, then retry.";
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let guidance = "Confirm the selected input device is active, then retry.";
     format!(
-        "{}: {}. Enable microphone access for desktop apps in Windows Privacy settings, confirm the selected input device is active, then retry.",
+        "{}: {}. {}",
         prefix,
-        error
+        error,
+        guidance
     )
 }
 
@@ -779,7 +838,7 @@ fn trim_voice_activity(input: &[f32], rate: u32) -> Option<Vec<f32>> {
     if speech_start.is_none() {
         let rms = (input.iter().map(|s| s * s).sum::<f32>() / input.len() as f32).sqrt();
         let peak = input.iter().fold(0.0_f32, |max, s| max.max(s.abs()));
-        if input.len() >= rate as usize / 3 && rms >= 0.0025 && peak >= 0.012 {
+        if input.len() >= rate as usize / 3 && (rms >= 0.0015 || peak >= 0.008) {
             return Some(input.to_vec());
         }
     }
@@ -792,6 +851,53 @@ fn trim_voice_activity(input: &[f32], rate: u32) -> Option<Vec<f32>> {
     }
 
     Some(input[start..end].to_vec())
+}
+
+fn extract_streaming_speech(input: &[f32], rate: u32) -> Vec<f32> {
+    if input.is_empty() {
+        return Vec::new();
+    }
+    let frame = ((rate as usize * 30) / 1000).max(1);
+    let preroll = ((rate as usize * PREROLL_MS) / 1000).max(frame);
+    let min_speech_frames = (MIN_SPEECH_MS / 30).max(1);
+    let frame_rms: Vec<f32> = input
+        .chunks(frame)
+        .map(|chunk| (chunk.iter().map(|s| s * s).sum::<f32>() / chunk.len() as f32).sqrt())
+        .collect();
+
+    if frame_rms.is_empty() {
+        return input.to_vec();
+    }
+
+    let noise_sample_count = ((300 / 30).max(1) as usize).min(frame_rms.len());
+    let mut noise = frame_rms[..noise_sample_count].to_vec();
+    noise.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let noise_floor = noise[noise.len() / 2];
+    let start_threshold = START_RMS_THRESHOLD.max(noise_floor * 2.0);
+
+    let mut speech_start = None;
+    let mut speech_frames = 0usize;
+    for (idx, &rms) in frame_rms.iter().enumerate() {
+        if rms >= start_threshold {
+            speech_frames += 1;
+            if speech_frames >= min_speech_frames {
+                let start_frame = idx.saturating_sub(speech_frames - 1);
+                speech_start = Some(start_frame * frame);
+                break;
+            }
+        } else {
+            speech_frames = 0;
+        }
+    }
+
+    if let Some(start_idx) = speech_start {
+        let start = start_idx.saturating_sub(preroll);
+        if start < input.len() {
+            return input[start..].to_vec();
+        }
+    }
+
+    input.to_vec()
 }
 
 pub(crate) fn save_wav(path: &std::path::Path, samples: &[f32], rate: u32) -> std::io::Result<()> {
@@ -839,7 +945,21 @@ pub fn start_level_emitter(app: tauri::AppHandle, is_recording: Arc<Mutex<bool>>
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_technical_transcript, trim_voice_activity};
+    use super::{normalize_technical_transcript, stop_capture_session, trim_voice_activity};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn stale_stop_does_not_disable_new_recording() {
+        let active = AtomicBool::new(true);
+        let mut recording = true;
+        assert!(stop_capture_session(&mut recording, 2, Some(1), &active).is_err());
+        assert!(recording);
+        assert!(active.load(Ordering::SeqCst));
+        assert!(stop_capture_session(&mut recording, 2, Some(2), &active).is_ok());
+        assert!(!recording);
+        assert!(!active.load(Ordering::SeqCst));
+        assert!(stop_capture_session(&mut recording, 2, Some(2), &active).is_err());
+    }
 
     #[test]
     fn technical_normalizer_repairs_common_asr_terms() {

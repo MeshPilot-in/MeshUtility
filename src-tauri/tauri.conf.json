@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "withGlobalTauri": true,
     "windows": [
       {
@@ -31,14 +32,14 @@
         "label": "widget",
         "title": "",
         "url": "/widget.html",
-        "width": 380,
-        "height": 48,
+        "width": 320,
+        "height": 36,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "visible": false,
-        "resizable": false,
+        "resizable": true,
         "shadow": false,
         "acceptFirstMouse": true,
         "x": 20,

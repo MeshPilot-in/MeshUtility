@@ -1,7 +1,8 @@
 [build]
-# whisper.cpp's Vulkan shader generator creates very deep MSBuild paths. Keep
-# the Cargo target root short so Windows file-tracking logs stay under limits.
-target-dir = "C:\\mu-target"
+# whisper.cpp's Vulkan shader generator creates very deep MSBuild paths on Windows.
+# If building on Windows with Vulkan, set CARGO_TARGET_DIR=C:\mu-target in your environment.
+# target-dir = "C:\\mu-target"
 [env]
-CMAKE = { value = "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe", force = false }
-VULKAN_SDK = { value = "C:\\VulkanSDK\\1.4.350.0", force = false }
+# On Windows, if CMake or Vulkan SDK are not in PATH, you can set them here or in your environment:
+# CMAKE = { value = "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe", force = false }
+# VULKAN_SDK = { value = "C:\\VulkanSDK\\1.4.350.0", force = false }

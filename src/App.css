@@ -34,6 +34,40 @@
   gap: 6px;
 }
 
+.utility-mac-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 12px;
+}
+
+.utility-mac-controls .utility-win-button {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 50%;
+  color: rgb(0 0 0 / 65%);
+}
+
+.utility-mac-controls .utility-win-button.utility-mac-close { background: #ff5f57; }
+.utility-mac-controls .utility-win-button.utility-mac-minimize { background: #febc2e; }
+.utility-mac-controls .utility-win-button.utility-mac-zoom { background: #28c840; }
+
+.utility-mac-controls .utility-win-button svg {
+  opacity: 0;
+}
+
+.utility-mac-controls:hover .utility-win-button svg,
+.utility-mac-controls .utility-win-button:focus-visible svg {
+  opacity: 1;
+}
+
+.utility-mac-controls .utility-win-button:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 3px;
+}
+
 .utility-window-controls {
   justify-content: flex-end;
   gap: 8px;
