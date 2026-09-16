@@ -1311,7 +1311,12 @@ async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, String> 
         for asset in assets {
             if let Some(name) = asset["name"].as_str() {
                 let name_lower = name.to_lowercase();
-                if (name_lower.ends_with(".msi") || name_lower.ends_with(".exe")) && (name_lower.contains("meshutility") || name_lower.contains("meshpilot")) {
+                #[cfg(target_os = "macos")]
+                let matches_platform = (name_lower.ends_with(".dmg") || name_lower.ends_with(".tar.gz")) && (name_lower.contains("meshutility") || name_lower.contains("meshpilot"));
+                #[cfg(not(target_os = "macos"))]
+                let matches_platform = (name_lower.ends_with(".msi") || name_lower.ends_with(".exe")) && (name_lower.contains("meshutility") || name_lower.contains("meshpilot"));
+
+                if matches_platform {
                     if let Some(url) = asset["browser_download_url"].as_str() {
                         download_url = url.to_string();
                         break;

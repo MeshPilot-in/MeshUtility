@@ -12,8 +12,8 @@ Built with Tauri 2, React, and Rust. Works fully offline with local Whisper mode
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-34d399?style=flat&logo=apache&logoColor=white&labelColor=1e293b)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-2496ED?style=flat&logo=tauri&logoColor=white&labelColor=1e293b)](https://tauri.app)
-[![Version](https://img.shields.io/badge/Version-v1.0.6-a855f7?style=flat&logo=github&logoColor=white&labelColor=1e293b)](https://github.com/lazyshrey/MeshUtility/releases)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?style=flat&logo=windows&logoColor=white&labelColor=1e293b)](https://github.com/lazyshrey/MeshUtility/releases)
+[![Version](https://img.shields.io/badge/Version-v1.0.12-a855f7?style=flat&logo=github&logoColor=white&labelColor=1e293b)](https://github.com/MeshPilot-in/MeshUtility/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-0078D4?style=flat&logoColor=white&labelColor=1e293b)](https://github.com/MeshPilot-in/MeshUtility/releases)
 
 </div>
 

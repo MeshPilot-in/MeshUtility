@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release Tag (e.g. v1.0.12)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -17,6 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - platform: 'macos-latest'
+            args: ''
           - platform: 'windows-latest'
             args: ''
 
@@ -36,16 +43,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev pkg-config
-
-      - name: Build native whisper-cli (macOS & Linux)
-        if: matrix.platform != 'windows-latest'
-        run: |
-          git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
-          cd whisper.cpp
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release
-          mkdir -p ../src-tauri/bin/whisper
-          cp build/bin/whisper-cli ../src-tauri/bin/whisper/
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -70,7 +67,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> C:\mu-target'
+          workspaces: './src-tauri'
 
       - name: Install dependencies
         run: npm install
@@ -80,9 +77,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'MeshUtility ${{ github.ref_name }}'
-          releaseBody: 'MeshUtility V1 standalone cross-platform release. stand-alone Tray-resident utility for AI voice dictation and prompt rewriting.'
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: 'MeshUtility ${{ inputs.tag || github.ref_name }}'
+          releaseBody: 'MeshUtility V1 standalone cross-platform release. Standalone tray-resident utility for AI voice dictation and prompt rewriting.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

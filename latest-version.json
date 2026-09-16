@@ -1,5 +1,5 @@
 {
-  "version": "v1.0.11",
-  "changelog": "Release v1.0.11: Cleaned up repository for public open-source release, improved widget styling & transparency, added website showcase, hardened security, and resolved lint issues.",
-  "downloadUrl": "https://github.com/MeshPilot-in/MeshUtility/releases/download/v1.0.11/MeshUtility_1.0.11_x64_en-US.msi"
+  "version": "v1.0.12",
+  "changelog": "Release v1.0.12: Cross-platform release supporting macOS (Apple Silicon DMG) and Windows (MSI/EXE), native dictation performance optimizations, improved widget interactions, and accessibility enhancements.",
+  "downloadUrl": "https://github.com/MeshPilot-in/MeshUtility/releases/download/v1.0.12/MeshUtility_1.0.12_x64_en-US.msi"
 }

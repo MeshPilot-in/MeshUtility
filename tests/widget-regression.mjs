@@ -47,7 +47,7 @@ async function widget(options = {}) {
           settings: { provider: { provider: 'groq', model: 'test' }, defaultActionId: 'enhance-prompt', closeToTray: true },
           history: [], keyStatus: {},
         };
-        if (cmd === 'plugin:app|version') return '1.0.11';
+        if (cmd === 'plugin:app|version') return '1.0.12';
         if (cmd === 'plugin:window|is_maximized') return window.testWidget.maximized || false;
         if (cmd === 'plugin:window|maximize') { window.testWidget.maximized = true; return; }
         if (cmd === 'plugin:window|unmaximize') { window.testWidget.maximized = false; return; }

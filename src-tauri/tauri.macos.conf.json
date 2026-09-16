@@ -3,9 +3,6 @@
     "macOSPrivateApi": true
   },
   "bundle": {
-    "resources": [
-      "bin/whisper/*"
-    ],
     "macOS": {
       "minimumSystemVersion": "11.0",
       "infoPlist": "Info.plist"
